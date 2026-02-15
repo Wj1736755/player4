@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <org.fossify.commons.views.MyTextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/email"
+        android:textSize="14sp" />
+
+    <org.fossify.commons.views.MyEditText
+        android:id="@+id/elevenlabs_email"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/email_hint"
+        android:inputType="textEmailAddress"
+        android:maxLines="1" />
+
+    <org.fossify.commons.views.MyTextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/api_key"
+        android:textSize="14sp" />
+
+    <org.fossify.commons.views.MyEditText
+        android:id="@+id/elevenlabs_api_key"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/api_key_hint"
+        android:inputType="text"
+        android:maxLines="1" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal">
+
+        <org.fossify.commons.views.MyTextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/voice_id"
+            android:textSize="14sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/elevenlabs_load_voices_button"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/load_voices"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+    <Spinner
+        android:id="@+id/elevenlabs_voice_spinner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:minHeight="48dp" />
+
+    <org.fossify.commons.views.MyEditText
+        android:id="@+id/elevenlabs_voice_id"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/voice_id_hint"
+        android:inputType="text"
+        android:maxLines="1"
+        android:visibility="gone" />
+
+</LinearLayout>

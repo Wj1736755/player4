@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/playlist_frame"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="@dimen/tiny_margin"
+    android:paddingStart="@dimen/medium_margin"
+    android:paddingTop="@dimen/activity_margin"
+    android:paddingEnd="@dimen/activity_margin"
+    android:paddingBottom="@dimen/activity_margin">
+
+    <org.fossify.commons.views.MyTextView
+        android:id="@+id/playlist_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:paddingStart="@dimen/medium_margin"
+        android:paddingEnd="@dimen/small_margin"
+        android:textSize="@dimen/big_text_size"
+        android:ellipsize="end"
+        android:maxLines="1"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/playlist_duration_at_speed"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintHorizontal_bias="0"
+        app:layout_constraintHorizontal_chainStyle="spread_inside"
+        tools:text="My Playlist" />
+
+    <org.fossify.commons.views.MyTextView
+        android:id="@+id/playlist_duration_at_speed"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingEnd="@dimen/small_margin"
+        android:textSize="@dimen/normal_text_size"
+        android:textColor="#FFB347"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/playlist_duration"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="55:35" />
+
+    <org.fossify.commons.views.MyTextView
+        android:id="@+id/playlist_duration"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingEnd="@dimen/small_margin"
+        android:textSize="@dimen/normal_text_size"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/playlist_tracks"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="1:23:45" />
+
+    <org.fossify.commons.views.MyTextView
+        android:id="@+id/playlist_tracks"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:alpha="0.6"
+        android:paddingEnd="@dimen/medium_margin"
+        android:textSize="@dimen/smaller_text_size"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="15" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
