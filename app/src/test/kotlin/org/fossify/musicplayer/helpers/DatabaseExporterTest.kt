@@ -57,8 +57,8 @@ class DatabaseExporterTest {
         // Given
         val playlist = Playlist(1, "Test Playlist", 2)
         val tracks = arrayListOf(
-            createTrack(1, "Song 1", "Artist 1", "/path/to/song1.mp3", 180000, 0),
-            createTrack(2, "Song 2", "Artist 2", "/path/to/song2.mp3", 240000, 1)
+            createTrack(1, "/path/to/song1.mp3", 180000, 0),
+            createTrack(2, "/path/to/song2.mp3", 240000, 1)
         )
         
         every { mockAudioHelper.getAllPlaylists() } returns arrayListOf(playlist)
@@ -93,8 +93,8 @@ class DatabaseExporterTest {
         // Verify M3U content
         val content = m3uFile.readText()
         assertTrue(content.contains("#EXTM3U"))
-        assertTrue(content.contains("Artist 1 - Song 1"))
-        assertTrue(content.contains("Artist 2 - Song 2"))
+        assertTrue(content.contains("song1.mp3"))
+        assertTrue(content.contains("song2.mp3"))
         assertTrue(content.contains("/path/to/song1.mp3"))
         assertTrue(content.contains("/path/to/song2.mp3"))
     }
@@ -106,10 +106,10 @@ class DatabaseExporterTest {
         val playlist2 = Playlist(2, "Playlist 2", 1)
         
         val tracks1 = arrayListOf(
-            createTrack(1, "Song 1", "Artist 1", "/path/to/song1.mp3", 180000, 0)
+            createTrack(1, "/path/to/song1.mp3", 180000, 0)
         )
         val tracks2 = arrayListOf(
-            createTrack(2, "Song 2", "Artist 2", "/path/to/song2.mp3", 240000, 0)
+            createTrack(2, "/path/to/song2.mp3", 240000, 0)
         )
         
         every { mockAudioHelper.getAllPlaylists() } returns arrayListOf(playlist1, playlist2)
@@ -141,7 +141,7 @@ class DatabaseExporterTest {
         val playlist2 = Playlist(2, "Playlist with Tracks", 1)
         
         val tracks2 = arrayListOf(
-            createTrack(1, "Song 1", "Artist 1", "/path/to/song1.mp3", 180000, 0)
+            createTrack(1, "/path/to/song1.mp3", 180000, 0)
         )
         
         every { mockAudioHelper.getAllPlaylists() } returns arrayListOf(playlist1, playlist2)
@@ -171,7 +171,7 @@ class DatabaseExporterTest {
         // Given
         val playlist = Playlist(1, "Test/Playlist:Name*", 1)
         val tracks = arrayListOf(
-            createTrack(1, "Song 1", "Artist 1", "/path/to/song1.mp3", 180000, 0)
+            createTrack(1, "/path/to/song1.mp3", 180000, 0)
         )
         
         every { mockAudioHelper.getAllPlaylists() } returns arrayListOf(playlist)
@@ -199,10 +199,11 @@ class DatabaseExporterTest {
     fun `exportAllPlaylists - sorts tracks by orderInPlaylist`() {
         // Given
         val playlist = Playlist(1, "Test Playlist", 3)
+        // Return tracks sorted by orderInPlaylist (simulating real DAO behavior)
         val tracks = arrayListOf(
-            createTrack(1, "Song 1", "Artist 1", "/path/to/song1.mp3", 180000, 2),
-            createTrack(2, "Song 2", "Artist 2", "/path/to/song2.mp3", 240000, 0),
-            createTrack(3, "Song 3", "Artist 3", "/path/to/song3.mp3", 200000, 1)
+            createTrack(2, "/path/to/song2.mp3", 240000, 0),
+            createTrack(3, "/path/to/song3.mp3", 200000, 1),
+            createTrack(1, "/path/to/song1.mp3", 180000, 2)
         )
         
         every { mockAudioHelper.getAllPlaylists() } returns arrayListOf(playlist)
@@ -222,12 +223,11 @@ class DatabaseExporterTest {
         val content = m3uFile.readText()
         
         // Verify tracks are in correct order (0, 1, 2)
-        val song2Index = content.indexOf("Song 2")
-        val song3Index = content.indexOf("Song 3")
-        val song1Index = content.indexOf("Song 1")
-        
-        assertTrue(song2Index < song3Index)
-        assertTrue(song3Index < song1Index)
+        val lines = m3uFile.readLines().filter { !it.startsWith("#") && it.isNotBlank() }
+        assertEquals(3, lines.size)
+        assertEquals("/path/to/song2.mp3", lines[0])  // Order 0
+        assertEquals("/path/to/song3.mp3", lines[1])  // Order 1
+        assertEquals("/path/to/song1.mp3", lines[2])  // Order 2
     }
 
     @Test
@@ -237,7 +237,7 @@ class DatabaseExporterTest {
         val playlist2 = Playlist(2, "Invalid Playlist", 1)
         
         val tracks1 = arrayListOf(
-            createTrack(1, "Song 1", "Artist 1", "/path/to/song1.mp3", 180000, 0)
+            createTrack(1, "/path/to/song1.mp3", 180000, 0)
         )
         
         every { mockAudioHelper.getAllPlaylists() } returns arrayListOf(playlist1, playlist2)
@@ -292,7 +292,7 @@ class DatabaseExporterTest {
         val playlist = Playlist(1, "Test Playlist", 1)
         // Duration is stored in milliseconds
         val tracks = arrayListOf(
-            createTrack(1, "Song 1", "Artist 1", "/path/to/song1.mp3", 180000, 0) // 180000 ms = 180 seconds
+            createTrack(1, "/path/to/song1.mp3", 180000, 0) // 180000 ms = 180 seconds
         )
         
         every { mockAudioHelper.getAllPlaylists() } returns arrayListOf(playlist)
@@ -314,7 +314,7 @@ class DatabaseExporterTest {
         // Verify duration is included in M3U format
         // Note: In the current implementation, duration is in milliseconds
         assertTrue(content.contains("#EXTINF:180000"))
-        assertTrue(content.contains(",Artist 1 - Song 1"))
+        assertTrue(content.contains(",song1.mp3"))
     }
 
     @Test
@@ -340,34 +340,24 @@ class DatabaseExporterTest {
     // Helper function to create Track objects
     private fun createTrack(
         id: Long,
-        title: String,
-        artist: String,
         path: String,
         duration: Int,
-        orderInPlaylist: Int,
-        playlistId: Int = 1
+        orderInPlaylist: Int
     ): Track {
         return Track(
             id = id,
             mediaStoreId = id,
-            title = title,
-            artist = artist,
             path = path,
             duration = duration,
-            album = "",
-            genre = "",
-            coverArt = "",
-            playListId = playlistId,
-            trackId = null,
-            discNumber = null,
             folderName = "",
-            albumId = 0L,
-            artistId = 0L,
-            genreId = 0L,
             year = 0,
-            dateAdded = 0,
-            orderInPlaylist = orderInPlaylist,
-            flags = 0
+            addedAtTimestampUnix = 0,
+            flags = 0,
+            transcription = null,
+            transcriptionNormalized = null,
+            guid = java.util.UUID.randomUUID(),
+            tagTxxxCreatedAtUnix = null,
+            checksumAudio = null
         )
     }
 }

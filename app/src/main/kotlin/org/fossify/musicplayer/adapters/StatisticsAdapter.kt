@@ -121,44 +121,29 @@ class StatisticsAdapter(
             root.setupViewBackground(context)
             trackFrame.isSelected = selectedKeys.contains(trackStats.hashCode())
             
-            // Display track title
-            trackTitle.text = track.title
+            // Display transcription or title as fallback
+            val displayText = track.transcription?.takeIf { it.isNotBlank() } ?: track.title
+            trackTitle.text = displayText
             trackTitle.setTextColor(textColor)
             
-            // Display artist, album, play count, and average playback speed
-            val playCountText = "${trackStats.playCount}x"
-            val speedText = trackStats.averagePlaybackSpeed?.let { 
-                String.format("%.2fx", it)
-            } ?: ""
-            val infoText = if (speedText.isNotEmpty()) {
-                "${track.artist} • ${track.album} • $playCountText • $speedText"
-            } else {
-                "${track.artist} • ${track.album} • $playCountText"
-            }
-            trackInfo.text = infoText
+            // Display play count
+            trackInfo.text = "${trackStats.playCount}x"
             trackInfo.setTextColor(textColor)
             
             // Display duration
             trackDuration.text = track.duration.getFormattedDuration()
             trackDuration.setTextColor(textColor)
             
-            // Display play count in trackId field
-            trackId.text = trackStats.playCount.toString()
-            trackId.setTextColor(context.getProperPrimaryColor())
-            trackId.beVisible()
-            
-            // Load cover art
-            activity.getTrackCoverArt(track) { coverArt ->
-                loadImage(trackImage, coverArt, placeholderBig)
-            }
-            trackImage.beVisible()
-            
+            // Hide cover art, play count badge, and drag handle
+            trackImage.beGone()
+            trackId.beGone()
             trackDragHandle.beGone()
         }
     }
 
     override fun onChange(position: Int): CharSequence {
-        return items.getOrNull(position)?.track?.title ?: ""
+        val track = items.getOrNull(position)?.track ?: return ""
+        return track.transcription?.takeIf { it.isNotBlank() } ?: track.title
     }
 }
 

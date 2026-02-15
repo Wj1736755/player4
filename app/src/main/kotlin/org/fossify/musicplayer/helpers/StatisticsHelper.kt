@@ -4,7 +4,9 @@ import android.content.Context
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.musicplayer.extensions.getTracksDB
 import org.fossify.musicplayer.interfaces.PlayCountResult
+import org.fossify.musicplayer.interfaces.DailyPlayResult
 import org.fossify.musicplayer.models.Track
+import java.util.Calendar
 import java.util.UUID
 
 /**
@@ -121,6 +123,73 @@ object StatisticsHelper {
             } catch (e: Exception) {
                 e.printStackTrace()
                 callback(0)
+            }
+        }
+    }
+    
+    /**
+     * Get tracks played on a specific day (unique tracks, ordered by last played).
+     * @param dayTimestamp Any timestamp within the target day (milliseconds)
+     */
+    fun getTracksPlayedOnDay(
+        context: Context,
+        dayTimestamp: Long,
+        callback: (List<TrackStatistics>) -> Unit
+    ) {
+        ensureBackgroundThread {
+            try {
+                val db = context.getTracksDB()
+                val playEventDao = db.PlayEventDao()
+                val songsDao = db.SongsDao()
+                
+                // Calculate day boundaries (start of day to end of day)
+                val calendar = Calendar.getInstance().apply {
+                    timeInMillis = dayTimestamp
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val dayStartMillis = calendar.timeInMillis
+                calendar.add(Calendar.DAY_OF_MONTH, 1)
+                val dayEndMillis = calendar.timeInMillis
+                
+                // Get tracks played on this day (ordered by last played DESC)
+                val dailyPlays = playEventDao.getTracksPlayedOnDay(dayStartMillis, dayEndMillis)
+                
+                // Get only the tracks we need (by their GUIDs)
+                val trackGuids = dailyPlays.mapNotNull { result ->
+                    try { UUID.fromString(result.trackGuid) } catch (e: Exception) { null }
+                }
+                val tracksMap = songsDao.getTracksByGuids(trackGuids).associateBy { it.guid }
+                
+                // Build TrackStatistics list
+                val trackStats = dailyPlays.mapNotNull { dailyResult ->
+                    val trackUuid = try { UUID.fromString(dailyResult.trackGuid) } catch (e: Exception) { null }
+                    val track = tracksMap[trackUuid] ?: return@mapNotNull null
+                    
+                    // Get average playback speed for this day
+                    val events = playEventDao.getEventsBetween(dayStartMillis, dayEndMillis)
+                        .filter { it.trackGuid == dailyResult.trackGuid }
+                    val speedsWithData = events.mapNotNull { it.playbackSpeed }
+                    val averagePlaybackSpeed = if (speedsWithData.isNotEmpty()) {
+                        speedsWithData.average().toFloat()
+                    } else {
+                        null
+                    }
+                    
+                    TrackStatistics(
+                        track = track,
+                        playCount = dailyResult.playCount,
+                        lastPlayedTimestamp = dailyResult.lastPlayed,
+                        averagePlaybackSpeed = averagePlaybackSpeed
+                    )
+                }
+                
+                callback(trackStats)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                callback(emptyList())
             }
         }
     }

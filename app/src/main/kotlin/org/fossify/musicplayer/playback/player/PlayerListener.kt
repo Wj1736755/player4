@@ -61,15 +61,9 @@ internal fun PlaybackService.getPlayerListener() = object : Player.Listener {
                 Thread {
                     try {
                         // Try to get track - first by guid (if mediaId is UUID), then by mediaStoreId (legacy numeric)
-                        val track = if (mediaId.contains("-")) {
-                            // mediaId is guid (UUID format with dashes)
-                            val uuid = try { UUID.fromString(mediaId) } catch (e: Exception) { null }
-                            uuid?.let { this@getPlayerListener.audioHelper.getTrackByGuid(it) }
-                        } else {
-                            // mediaId is mediaStoreId (legacy numeric)
-                            val mediaStoreId = mediaId.toLongOrNull()
-                            mediaStoreId?.let { this@getPlayerListener.audioHelper.getTrack(it) }
-                        }
+                        // mediaId is guid (UUID format)
+                        val uuid = try { UUID.fromString(mediaId) } catch (e: Exception) { null }
+                        val track = uuid?.let { this@getPlayerListener.audioHelper.getTrackByGuid(it) }
                         
                         if (track != null) {
                             android.util.Log.e("PlayerListener", "═══════════════════════════════════════════════════════")
@@ -201,14 +195,27 @@ internal fun PlaybackService.getPlayerListener() = object : Player.Listener {
     }
     
     override fun onIsPlayingChanged(isPlaying: Boolean) {
-        // Log playback event when playback actually starts (including after resume from background)
+        // Sync background player with main player
         if (isPlaying) {
+            // Main player started/resumed
+            if (this@getPlayerListener.backgroundPlayer?.isReady() == true) {
+                // Background player already initialized, just resume
+                this@getPlayerListener.resumeBackgroundPlayer()
+            } else {
+                // First time or needs re-initialization, start background player
+                this@getPlayerListener.startBackgroundPlayer()
+            }
+
+            // Log playback event when playback actually starts (including after resume from background)
             withPlayer {
                 val currentMediaItem = currentMediaItem
                 if (currentMediaItem != null) {
                     logPlaybackIfNeeded(currentMediaItem)
                 }
             }
+        } else {
+            // Main player paused/stopped
+            this@getPlayerListener.pauseBackgroundPlayer()
         }
     }
     

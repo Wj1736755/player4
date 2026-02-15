@@ -1,0 +1,46 @@
+/**
+ * Bumps version in version.gradle: same calendar day -> buildNumber++, else new date and build 1.
+ */
+tasks.register('updateVersion') {
+    group = 'versioning'
+    description = 'Update version.gradle (date + build number) for local debug installs'
+    doLast {
+        def versionFile = rootProject.file('version.gradle')
+        def content = versionFile.text
+
+        def calendar = Calendar.getInstance()
+        def currentYear = calendar.get(Calendar.YEAR)
+        def currentMonth = calendar.get(Calendar.MONTH) + 1
+        def currentDay = calendar.get(Calendar.DAY_OF_MONTH)
+
+        def yearMatcher = content =~ /versionYear = (\d+)/
+        def monthMatcher = content =~ /versionMonth = (\d+)/
+        def dayMatcher = content =~ /versionDay = (\d+)/
+        def buildMatcher = content =~ /buildNumber = (\d+)/
+
+        def existingYear = yearMatcher ? yearMatcher[0][1].toInteger() : currentYear
+        def existingMonth = monthMatcher ? monthMatcher[0][1].toInteger() : currentMonth
+        def existingDay = dayMatcher ? dayMatcher[0][1].toInteger() : currentDay
+        def existingBuild = buildMatcher ? buildMatcher[0][1].toInteger() : 0
+
+        def newBuild
+        if (existingYear == currentYear && existingMonth == currentMonth && existingDay == currentDay) {
+            newBuild = existingBuild + 1
+            println "Same day: build $existingBuild -> $newBuild"
+        } else {
+            newBuild = 1
+            println "New date: $existingYear.$existingMonth.$existingDay -> $currentYear.$currentMonth.$currentDay, build reset to 1"
+        }
+
+        def newVersionCode = currentYear * 1000000 + currentMonth * 10000 + currentDay * 100 + newBuild
+        def newVersionName = String.format("%d.%02d.%02d (Build %02d)", currentYear, currentMonth, currentDay, newBuild)
+        println "version.gradle -> $newVersionName (versionCode $newVersionCode)"
+
+        content = content.replaceAll(/versionYear = \d+/, "versionYear = $currentYear")
+        content = content.replaceAll(/versionMonth = \d+/, "versionMonth = $currentMonth")
+        content = content.replaceAll(/versionDay = \d+/, "versionDay = $currentDay")
+        content = content.replaceAll(/buildNumber = \d+/, "buildNumber = $newBuild")
+
+        versionFile.text = content
+    }
+}

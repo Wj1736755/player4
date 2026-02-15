@@ -80,6 +80,48 @@
                 android:id="@+id/settings_color_customization_divider"
                 layout="@layout/divider" />
 
+            <!-- ElevenLabs (after colors, before general) -->
+            <include
+                android:id="@+id/settings_elevenlabs_divider"
+                layout="@layout/divider" />
+
+            <TextView
+                android:id="@+id/settings_elevenlabs_section_label"
+                style="@style/SettingsSectionLabelStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/elevenlabs_settings" />
+
+            <RelativeLayout
+                android:id="@+id/settings_elevenlabs_api_keys_holder"
+                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_elevenlabs_api_keys_label"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/elevenlabs_api_keys" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_elevenlabs_test_holder"
+                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_elevenlabs_test_label"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/elevenlabs_test" />
+
+            </RelativeLayout>
+
             <TextView
                 android:id="@+id/settings_general_settings_label"
                 style="@style/SettingsSectionLabelStyle"
@@ -172,6 +214,21 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/swap_prev_next" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_scan_dry_run_holder"
+                style="@style/SettingsHolderSwitchStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyMaterialSwitch
+                    android:id="@+id/settings_scan_dry_run"
+                    style="@style/SettingsSwitchStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/scan_dry_run" />
 
             </RelativeLayout>
 
@@ -303,45 +360,114 @@
 
             </RelativeLayout>
 
-            <!-- ElevenLabs Section -->
+            <!-- Background audio -->
             <include
-                android:id="@+id/settings_elevenlabs_divider"
+                android:id="@+id/settings_background_audio_divider"
                 layout="@layout/divider" />
 
             <TextView
-                android:id="@+id/settings_elevenlabs_section_label"
+                android:id="@+id/settings_background_audio_section_label"
                 style="@style/SettingsSectionLabelStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/elevenlabs_settings" />
+                android:text="@string/background_audio" />
 
             <RelativeLayout
-                android:id="@+id/settings_elevenlabs_api_keys_holder"
-                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:id="@+id/settings_background_audio_enabled_holder"
+                style="@style/SettingsHolderSwitchStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
-                <org.fossify.commons.views.MyTextView
-                    android:id="@+id/settings_elevenlabs_api_keys_label"
-                    style="@style/SettingsTextLabelStyle"
-                    android:layout_width="wrap_content"
+                <org.fossify.commons.views.MyMaterialSwitch
+                    android:id="@+id/settings_background_audio_enabled"
+                    style="@style/SettingsSwitchStyle"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/elevenlabs_api_keys" />
+                    android:text="@string/enable_background_audio" />
 
             </RelativeLayout>
 
             <RelativeLayout
-                android:id="@+id/settings_elevenlabs_test_holder"
-                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:id="@+id/settings_background_playlist_holder"
+                style="@style/SettingsHolderTextViewStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
                 <org.fossify.commons.views.MyTextView
-                    android:id="@+id/settings_elevenlabs_test_label"
+                    android:id="@+id/settings_background_playlist_label"
                     style="@style/SettingsTextLabelStyle"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/elevenlabs_test" />
+                    android:text="@string/background_playlist_name" />
+
+                <org.fossify.commons.views.MyEditText
+                    android:id="@+id/settings_background_playlist_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/settings_background_playlist_label"
+                    android:layout_marginTop="@dimen/activity_margin"
+                    android:inputType="text"
+                    android:maxLines="1" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_background_volume_holder"
+                style="@style/SettingsHolderTextViewStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <org.fossify.commons.views.MyTextView
+                            android:id="@+id/settings_background_volume_label"
+                            style="@style/SettingsTextLabelStyle"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/background_volume" />
+
+                        <org.fossify.commons.views.MyTextView
+                            android:id="@+id/settings_background_volume_value"
+                            style="@style/SettingsTextValueStyle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="60%" />
+
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.AppCompatSeekBar
+                        android:id="@+id/settings_background_volume_seekbar"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/activity_margin"
+                        android:max="100"
+                        android:progress="60" />
+
+                </LinearLayout>
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_background_loop_holder"
+                style="@style/SettingsHolderSwitchStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyMaterialSwitch
+                    android:id="@+id/settings_background_loop"
+                    style="@style/SettingsSwitchStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/loop_playlist" />
 
             </RelativeLayout>
         </LinearLayout>

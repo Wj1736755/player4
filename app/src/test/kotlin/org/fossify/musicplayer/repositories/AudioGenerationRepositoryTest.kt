@@ -34,7 +34,12 @@ class AudioGenerationRepositoryTest {
         val audio = GeneratedAudio(
             variantIndex = 0,
             audioData = "test audio data".toByteArray(),
-            originalText = "Test text"
+            originalText = "Test text",
+            voiceName = "Antoni",
+            stability = 0.5f,
+            similarityBoost = 0.75f,
+            style = 0.0f,
+            speakerBoost = true
         )
         
         // When
@@ -42,8 +47,9 @@ class AudioGenerationRepositoryTest {
         
         // Then
         assertTrue(file.exists())
-        assertTrue(file.name.startsWith("tts_v0_"))
-        assertTrue(file.name.endsWith(".mp3"))
+        assertTrue("File name should start with ElevenLabs_", file.name.startsWith("ElevenLabs_"))
+        assertTrue("File name should contain voice name", file.name.contains("Antoni"))
+        assertTrue("File name should end with .mp3", file.name.endsWith(".mp3"))
         assertEquals("test audio data", file.readText())
     }
     

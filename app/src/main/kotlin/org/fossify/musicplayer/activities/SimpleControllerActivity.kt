@@ -108,35 +108,41 @@ abstract class SimpleControllerActivity : SimpleActivity(), Player.Listener {
         withPlayer {
             sendCommand(
                 command = CustomCommands.SET_NEXT_ITEM,
-                extras = bundleOf(EXTRA_NEXT_MEDIA_ID to track.mediaStoreId.toString())
+                extras = bundleOf(EXTRA_NEXT_MEDIA_ID to track.guid.toString())
             )
             callback()
         }
     }
 
     fun deleteTracks(tracks: List<Track>, callback: () -> Unit) {
-        try {
-            val guidsToDelete = tracks.mapNotNull { it.guid }
-            audioHelper.deleteTracksByGuid(guidsToDelete)
-            audioHelper.removeInvalidAlbumsArtists()
-        } catch (ignored: Exception) {
-        }
-
         val contentUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         maybeRescanTrackPaths(tracks) { tracksToDelete ->
-            if (tracksToDelete.isNotEmpty()) {
-                if (isRPlus()) {
-                    val uris = tracksToDelete.map { ContentUris.withAppendedId(contentUri, it.mediaStoreId) }
-                    deleteSDK30Uris(uris) { success ->
-                        if (success) {
-                            removeQueueItems(tracksToDelete)
-                            EventBus.getDefault().post(Events.RefreshFragments())
-                            callback()
-                        } else {
-                            toast(org.fossify.commons.R.string.unknown_error_occurred)
+            if (tracksToDelete.isEmpty()) {
+                callback()
+                return@maybeRescanTrackPaths
+            }
+            if (isRPlus()) {
+                val uris = tracksToDelete.map { ContentUris.withAppendedId(contentUri, it.mediaStoreId) }
+                deleteSDK30Uris(uris) { success ->
+                    if (success) {
+                        ensureBackgroundThread {
+                            try {
+                                audioHelper.deleteTracksFromDatabase(tracksToDelete)
+                                audioHelper.removeInvalidAlbumsArtists()
+                            } catch (ignored: Exception) {
+                            }
+                            runOnUiThread {
+                                removeQueueItems(tracksToDelete)
+                                EventBus.getDefault().post(Events.RefreshFragments())
+                                callback()
+                            }
                         }
+                    } else {
+                        toast(org.fossify.commons.R.string.unknown_error_occurred)
                     }
-                } else {
+                }
+            } else {
+                ensureBackgroundThread {
                     tracksToDelete.forEach { track ->
                         try {
                             val where = "${MediaStore.Audio.Media._ID} = ?"
@@ -146,10 +152,16 @@ abstract class SimpleControllerActivity : SimpleActivity(), Player.Listener {
                         } catch (ignored: Exception) {
                         }
                     }
-
-                    removeQueueItems(tracksToDelete)
-                    EventBus.getDefault().post(Events.RefreshFragments())
-                    callback()
+                    try {
+                        audioHelper.deleteTracksFromDatabase(tracksToDelete)
+                        audioHelper.removeInvalidAlbumsArtists()
+                    } catch (ignored: Exception) {
+                    }
+                    runOnUiThread {
+                        removeQueueItems(tracksToDelete)
+                        EventBus.getDefault().post(Events.RefreshFragments())
+                        callback()
+                    }
                 }
             }
         }

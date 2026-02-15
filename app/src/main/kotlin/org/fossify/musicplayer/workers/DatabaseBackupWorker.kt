@@ -16,8 +16,10 @@ import java.util.Locale
  * Format: songs_v{version}_daily_{yyyyMMdd_HHmmss}.db
  * 
  * Cleanup strategy:
- * - Keeps all backups from TODAY
- * - Deletes ALL backups from previous days if at least one backup exists from TODAY
+ * - Keeps ALL backups from TODAY
+ * - Keeps last 7 days of backups
+ * - For each past date (not today), keeps only the LATEST backup from that day
+ * - Deletes backups older than 7 days
  */
 class DatabaseBackupWorker(
     context: Context,
@@ -117,8 +119,10 @@ class DatabaseBackupWorker(
     /**
      * Clean old daily backups
      * Strategy: 
-     * - If we have at least one backup from TODAY, delete ALL backups from previous days
-     * - This keeps the folder clean while preserving all backups from the current day
+     * - Keeps ALL backups from TODAY
+     * - Keeps last 7 days of backups
+     * - For each past date (not today), keeps only the LATEST backup from that day
+     * - Deletes backups older than 7 days
      */
     private fun cleanOldDailyBackups() {
         try {
@@ -135,44 +139,79 @@ class DatabaseBackupWorker(
                 return
             }
             
-            // Get today's date string (yyyyMMdd)
-            val todayDateString = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+            val dateFormat = SimpleDateFormat("yyyyMMdd", Locale.US)
+            val today = Date()
+            val todayDateString = dateFormat.format(today)
             
-            // Separate backups into today's and old ones
-            val todayBackups = mutableListOf<File>()
-            val oldBackups = mutableListOf<File>()
+            // Calculate date 7 days ago
+            val calendar = java.util.Calendar.getInstance()
+            calendar.time = today
+            calendar.add(java.util.Calendar.DAY_OF_YEAR, -7)
+            val sevenDaysAgo = calendar.time
+
+            // Group backups by date
+            val backupsByDate = mutableMapOf<String, MutableList<File>>()
             
             for (backup in allBackups) {
-                // Extract date from filename: songs_v37_daily_20260209_220157.db
-                // Date is at position after "daily_"
+                // Extract date from filename: songs_v63_daily_20260308_143022.db
                 val dateMatch = Regex("""_daily_(\d{8})_""").find(backup.name)
                 if (dateMatch != null) {
                     val backupDateString = dateMatch.groupValues[1]
-                    if (backupDateString == todayDateString) {
-                        todayBackups.add(backup)
-                    } else {
-                        oldBackups.add(backup)
-                    }
+                    backupsByDate.getOrPut(backupDateString) { mutableListOf() }.add(backup)
                 }
             }
             
-            Log.d(TAG, "Found ${todayBackups.size} backups from today, ${oldBackups.size} from previous days")
+            Log.d(TAG, "Found backups for ${backupsByDate.size} different dates")
             
-            // If we have at least one backup from today, delete all old backups
-            if (todayBackups.isNotEmpty() && oldBackups.isNotEmpty()) {
-                var deletedCount = 0
-                for (oldBackup in oldBackups) {
-                    if (oldBackup.delete()) {
-                        deletedCount++
-                        Log.d(TAG, "Deleted old backup: ${oldBackup.name}")
-                    } else {
-                        Log.w(TAG, "Failed to delete old backup: ${oldBackup.name}")
+            val backupsToDelete = mutableListOf<File>()
+            var keptCount = 0
+
+            for ((dateString, backupsForDate) in backupsByDate) {
+                try {
+                    val backupDate = dateFormat.parse(dateString)
+
+                    if (backupDate == null) {
+                        // Can't parse date, skip
+                        continue
                     }
+
+                    // Check if backup is older than 7 days
+                    if (backupDate.before(sevenDaysAgo)) {
+                        // Delete all backups older than 7 days
+                        Log.d(TAG, "Date $dateString is older than 7 days, marking ${backupsForDate.size} backups for deletion")
+                        backupsToDelete.addAll(backupsForDate)
+                    } else if (dateString == todayDateString) {
+                        // Keep ALL backups from today
+                        Log.d(TAG, "Keeping all ${backupsForDate.size} backups from today ($dateString)")
+                        keptCount += backupsForDate.size
+                    } else {
+                        // For past dates (within 7 days), keep only the LATEST backup
+                        // Sort by timestamp (filename contains timestamp after date)
+                        val sortedBackups = backupsForDate.sortedByDescending { it.name }
+                        val latestBackup = sortedBackups.first()
+                        val oldBackups = sortedBackups.drop(1)
+
+                        Log.d(TAG, "Date $dateString: keeping latest backup (${latestBackup.name}), marking ${oldBackups.size} for deletion")
+                        keptCount++
+                        backupsToDelete.addAll(oldBackups)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing backups for date $dateString", e)
                 }
-                Log.i(TAG, "Cleaned $deletedCount old backups, kept ${todayBackups.size} from today")
-            } else {
-                Log.d(TAG, "Keeping all backups (${allBackups.size} total)")
             }
+
+            // Delete marked backups
+            var deletedCount = 0
+            for (backup in backupsToDelete) {
+                if (backup.delete()) {
+                    deletedCount++
+                    Log.d(TAG, "Deleted backup: ${backup.name}")
+                } else {
+                    Log.w(TAG, "Failed to delete backup: ${backup.name}")
+                }
+            }
+
+            Log.i(TAG, "Cleanup complete: kept $keptCount backups, deleted $deletedCount backups")
         } catch (e: Exception) {
             Log.e(TAG, "Error cleaning old daily backups", e)
         }

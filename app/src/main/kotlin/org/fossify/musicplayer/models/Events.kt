@@ -5,4 +5,5 @@ class Events {
     class PlaylistsUpdated
     class RefreshFragments
     class RefreshTracks
+    class ScanProgress(val progress: Int, val max: Int, val message: String)
 }

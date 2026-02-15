@@ -1,0 +1,23 @@
+/**
+ * Local / phone debug versioning (date + daily build counter).
+ * versionCode: YYYYMMDDBB (must always increase for adb install -r).
+ * versionName: human-readable with build number.
+ *
+ * Run: ./gradlew updateVersion
+ * Or: assembleCoreDebug / assembleFossDebug runs updateVersion first (file updated for next Gradle invocation).
+ */
+ext {
+    versionYear = 2026
+    versionMonth = 4
+    versionDay = 5
+
+    buildNumber = 7
+
+    versionCode = versionYear * 1000000 + versionMonth * 10000 + versionDay * 100 + buildNumber
+
+    versionName = String.format("%d.%02d.%02d (Build %02d)", versionYear, versionMonth, versionDay, buildNumber)
+    versionSuffix = ""
+    versionNameFull = versionName + versionSuffix
+
+    archivesVersionLabel = String.format("%d.%02d.%02d.%02d", versionYear, versionMonth, versionDay, buildNumber)
+}

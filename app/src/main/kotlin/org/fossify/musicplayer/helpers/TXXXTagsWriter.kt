@@ -163,9 +163,10 @@ class TXXXTagsWriter(private val context: Context) {
             
             // Write each tag
             tags.transcription?.let { 
-                writeTXXXTag(tag, "Content", it)
+                val normalized = ID3TagsHelper.normalizeText(it)
+                writeTXXXTag(tag, "Content", normalized)
                 tagsWritten++
-                android.util.Log.d("TXXXTagsWriter", "✅ Wrote Content: ${it.take(50)}...")
+                android.util.Log.d("TXXXTagsWriter", "✅ Wrote Content: ${normalized.take(50)}...")
             } ?: android.util.Log.w("TXXXTagsWriter", "⚠️ Skipped Content (null)")
             
             tags.createdOnDate?.let { 

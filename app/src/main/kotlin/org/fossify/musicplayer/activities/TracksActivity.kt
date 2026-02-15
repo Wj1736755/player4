@@ -204,17 +204,15 @@ class TracksActivity : SimpleMusicActivity() {
                 }
 
                 TYPE_ALBUM -> {
-                    val albumTracks = audioHelper.getAlbumTracks(album.id)
-                    tracks.addAll(albumTracks)
+                    // Album support removed - not needed for AI-generated audio
 
-                    val header = AlbumHeader(album.id, album.title, album.coverArt, album.year, tracks.size, tracks.sumOf { it.duration }, album.artist)
+                    val header = AlbumHeader(album.id, album.title, "", album.year, 0, 0, "")
                     listItems.add(header)
                     listItems.addAll(tracks)
                 }
 
                 TYPE_TRACKS -> {
-                    val genreTracks = audioHelper.getGenreTracks(genre.id)
-                    tracks.addAll(genreTracks)
+                    // Genre support removed - not needed for AI-generated audio
                 }
 
                 else -> {
@@ -279,13 +277,20 @@ class TracksActivity : SimpleMusicActivity() {
         ChangeSortingDialog(this, ACTIVITY_PLAYLIST_FOLDER, playlist, folder) {
             val adapter = getTracksAdapter() ?: return@ChangeSortingDialog
             val tracks = adapter.items
-            val sorting = when (sourceType) {
-                TYPE_PLAYLIST -> config.getProperPlaylistSorting(playlist?.id ?: -1)
-                TYPE_TRACKS -> config.trackSorting
-                else -> config.getProperFolderSorting(folder ?: "")
+            when (sourceType) {
+                TYPE_PLAYLIST -> {
+                    val sorting = config.getProperPlaylistSorting(playlist?.id ?: -1)
+                    if (sorting and PLAYER_SORT_BY_CUSTOM != 0) {
+                        val ordered = audioHelper.getPlaylistTracks(playlist!!.id)
+                        tracks.clear()
+                        tracks.addAll(ordered)
+                    } else {
+                        tracks.sortSafely(sorting)
+                    }
+                }
+                TYPE_TRACKS -> tracks.sortSafely(config.trackSorting)
+                else -> tracks.sortSafely(config.getProperFolderSorting(folder ?: ""))
             }
-
-            tracks.sortSafely(sorting)
             adapter.updateItems(tracks, forceUpdate = true)
 
             if (sourceType == TYPE_TRACKS) {
@@ -353,9 +358,12 @@ class TracksActivity : SimpleMusicActivity() {
 
     private fun onSearchQueryChanged(text: String) {
         val normalizedText = text.normalizeString()
-        val filtered = tracksIgnoringSearch.filter {
-            it.title.normalizeString().contains(normalizedText, true)
-                || ("${it.artist} - ${it.album}").normalizeString().contains(text, true)
+        val filtered = tracksIgnoringSearch.filter { track ->
+            val titleMatch = track.title.normalizeString().contains(normalizedText, true)
+            val folderMatch = track.folderName.normalizeString().contains(text, true)
+            val transcriptionMatch = track.transcription?.normalizeString()?.contains(normalizedText, true) == true
+                || track.transcriptionNormalized?.normalizeString()?.contains(normalizedText, true) == true
+            titleMatch || folderMatch || transcriptionMatch
         }.toMutableList() as ArrayList<Track>
         getTracksAdapter()?.updateItems(filtered, text)
         binding.tracksPlaceholder.beGoneIf(filtered.isNotEmpty())

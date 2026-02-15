@@ -21,18 +21,36 @@ interface PlaylistTracksDao {
     fun insertAll(playlistTracks: List<PlaylistTrack>)
     
     @Query("DELETE FROM playlist_tracks WHERE playlist_id = :playlistId AND track_guid = :trackGuid")
-    fun removeTrackFromPlaylist(playlistId: Int, trackGuid: UUID)
-    
+    fun deletePlaylistTrackRow(playlistId: Int, trackGuid: UUID)
+
+    @Query("DELETE FROM playlist_tracks WHERE playlist_id = :playlistId AND track_guid IN (:trackGuids)")
+    fun deletePlaylistTrackRows(playlistId: Int, trackGuids: List<UUID>)
+
+    @Transaction
+    fun removeTrackFromPlaylist(playlistId: Int, trackGuid: UUID) {
+        deletePlaylistTrackRow(playlistId, trackGuid)
+        compactPositionsForPlaylist(playlistId)
+    }
+
+    @Transaction
+    fun removeTracksFromPlaylist(playlistId: Int, trackGuids: List<UUID>) {
+        if (trackGuids.isEmpty()) {
+            return
+        }
+        deletePlaylistTrackRows(playlistId, trackGuids)
+        compactPositionsForPlaylist(playlistId)
+    }
+
     @Query("DELETE FROM playlist_tracks WHERE playlist_id = :playlistId")
     fun removeAllTracksFromPlaylist(playlistId: Int)
-    
-    @Query("DELETE FROM playlist_tracks WHERE track_guid = :trackGuid")
-    fun removeTrackFromAllPlaylists(trackGuid: UUID)
     
     // Query operations
     
     @Query("SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = :playlistId")
     fun getPlaylistTrackCount(playlistId: Int): Int
+
+    @Query("SELECT COALESCE(MAX(position), -1) FROM playlist_tracks WHERE playlist_id = :playlistId")
+    fun getMaxPositionForPlaylist(playlistId: Int): Int
     
     @Query("SELECT COUNT(*) > 0 FROM playlist_tracks WHERE playlist_id = :playlistId AND track_guid = :trackGuid")
     fun isTrackInPlaylist(playlistId: Int, trackGuid: UUID): Boolean
@@ -66,11 +84,20 @@ interface PlaylistTracksDao {
     @Query("UPDATE playlist_tracks SET position = :newPosition WHERE playlist_id = :playlistId AND track_guid = :trackGuid")
     fun updateTrackPosition(playlistId: Int, trackGuid: UUID, newPosition: Int)
     
+    @Query("SELECT DISTINCT playlist_id FROM playlist_tracks WHERE track_guid = :trackGuid")
+    fun getPlaylistIdsContainingTrack(trackGuid: UUID): List<Int>
+
+    fun compactPositionsForPlaylist(playlistId: Int) {
+        val ordered = getPlaylistTracksOrdered(playlistId)
+        if (ordered.isEmpty()) {
+            return
+        }
+        applyDenseZeroBasedPositions(playlistId, ordered.map { it.trackGuid })
+    }
+
     @Transaction
     fun reorderPlaylist(playlistId: Int, orderedGuids: List<UUID>) {
-        orderedGuids.forEachIndexed { index, guid ->
-            updateTrackPosition(playlistId, guid, index)
-        }
+        applyDenseZeroBasedPositions(playlistId, orderedGuids)
     }
     
     // Batch operations for migration/import
@@ -82,5 +109,18 @@ interface PlaylistTracksDao {
             PlaylistTrack(playlistId, guid, position)
         }
         insertAll(playlistTracks)
+    }
+}
+
+private fun PlaylistTracksDao.applyDenseZeroBasedPositions(playlistId: Int, orderedGuids: List<UUID>) {
+    if (orderedGuids.isEmpty()) {
+        return
+    }
+    val stagingOffset = 1_000_000
+    orderedGuids.forEachIndexed { index, guid ->
+        updateTrackPosition(playlistId, guid, stagingOffset + index)
+    }
+    orderedGuids.forEachIndexed { index, guid ->
+        updateTrackPosition(playlistId, guid, index)
     }
 }

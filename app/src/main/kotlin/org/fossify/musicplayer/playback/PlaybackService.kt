@@ -45,6 +45,9 @@ class PlaybackService : MediaLibraryService(), MediaSessionService.Listener {
             config.autoQueueTrackToRemoveNext = value
         }
 
+    // Background audio player
+    internal var backgroundPlayer: BackgroundAudioPlayer? = null
+
     private val autoQueueReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             if (intent?.action == "org.fossify.musicplayer.CLEAR_AUTO_QUEUE") {
@@ -77,6 +80,7 @@ class PlaybackService : MediaLibraryService(), MediaSessionService.Listener {
             android.util.Log.w("PlaybackService", "Failed to unregister receiver", e)
         }
         clearAutoQueueTracking()
+        releaseBackgroundPlayer()
         releaseMediaSession()
         clearListener()
         stopSleepTimer()
@@ -89,6 +93,7 @@ class PlaybackService : MediaLibraryService(), MediaSessionService.Listener {
             stop()
         }
 
+        stopBackgroundPlayer()
         stopSelf()
     }
 
@@ -261,6 +266,54 @@ class PlaybackService : MediaLibraryService(), MediaSessionService.Listener {
                 android.util.Log.d("PlaybackService", "All tracks from 'morn' were already auto-added, nothing new to add")
             }
         }
+    }
+
+    // Background audio player management
+
+    internal fun initializeBackgroundPlayerIfNeeded() {
+        if (!config.backgroundAudioEnabled) {
+            return
+        }
+
+        if (backgroundPlayer == null) {
+            backgroundPlayer = BackgroundAudioPlayer(this)
+        }
+
+        backgroundPlayer?.initialize(
+            playlistName = config.backgroundPlaylistName,
+            volume = config.backgroundVolume,
+            loop = config.backgroundLoop
+        )
+    }
+
+    internal fun startBackgroundPlayer() {
+        if (!config.backgroundAudioEnabled) {
+            return
+        }
+
+        initializeBackgroundPlayerIfNeeded()
+        backgroundPlayer?.start()
+    }
+
+    internal fun pauseBackgroundPlayer() {
+        backgroundPlayer?.pause()
+    }
+
+    internal fun resumeBackgroundPlayer() {
+        if (!config.backgroundAudioEnabled) {
+            return
+        }
+
+        backgroundPlayer?.resume()
+    }
+
+    internal fun stopBackgroundPlayer() {
+        backgroundPlayer?.stop()
+    }
+
+    private fun releaseBackgroundPlayer() {
+        backgroundPlayer?.release()
+        backgroundPlayer = null
     }
 
     companion object {

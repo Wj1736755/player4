@@ -23,7 +23,7 @@ import java.io.File
  * 4. Values conform to documented standards
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(sdk = [28], shadows = [ShadowMediaMetadataRetrieverForTest::class])
 class TXXXTagsIntegrationTest {
 
     private lateinit var context: Context
@@ -312,27 +312,71 @@ class TXXXTagsIntegrationTest {
      * This creates a very small MP3 file with minimal MPEG frame.
      */
     private fun createMinimalMP3File(file: File) {
-        // Minimal MP3: ID3v2 header + minimal MPEG frame
-        // ID3v2.4 header (10 bytes): "ID3" + version + flags + size
-        val id3Header = byteArrayOf(
-            'I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte(),  // ID3
-            0x04, 0x00,  // Version 2.4.0
-            0x00,        // Flags
-            0x00, 0x00, 0x00, 0x00  // Size (0)
-        )
-        
-        // Minimal MPEG Audio Layer III frame header (4 bytes) + some data
-        // Frame sync (11 bits set) + MPEG Audio Layer III + bitrate + samplerate + padding
-        val mpegFrame = byteArrayOf(
-            0xFF.toByte(), 0xFB.toByte(), 0x90.toByte(), 0x00.toByte(),  // MPEG frame header
-            // Add some dummy audio data (at least a few bytes)
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        )
-        
+        // Create a larger, more realistic MP3 file that JAudioTagger can properly parse
         file.outputStream().use { output ->
+            // ID3v2.4 header with space for tags (200 bytes)
+            val tagSize = 200
+            val id3Header = byteArrayOf(
+                'I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte(),  // "ID3"
+                0x04, 0x00,  // Version 2.4.0
+                0x00,        // Flags
+                // Size encoded as syncsafe integer (7 bits per byte)
+                ((tagSize shr 21) and 0x7F).toByte(),
+                ((tagSize shr 14) and 0x7F).toByte(),
+                ((tagSize shr 7) and 0x7F).toByte(),
+                (tagSize and 0x7F).toByte()
+            )
             output.write(id3Header)
-            output.write(mpegFrame)
+            
+            // Add TIT2 (Title) frame as minimal tag content
+            val titleFrame = "TIT2".toByteArray() + byteArrayOf(
+                0x00, 0x00, 0x00, 0x0A,  // Frame size (10 bytes)
+                0x00, 0x00,              // Flags
+                0x00,                     // Text encoding (ISO-8859-1)
+                'T'.code.toByte(), 'e'.code.toByte(), 's'.code.toByte(), 't'.code.toByte(),
+                ' '.code.toByte(), 'M'.code.toByte(), 'P'.code.toByte(), '3'.code.toByte(), 0x00
+            )
+            output.write(titleFrame)
+            
+            // Pad remaining tag space
+            val remainingTagSpace = tagSize - titleFrame.size
+            output.write(ByteArray(remainingTagSpace) { 0x00 })
+            
+            // Add multiple MPEG frames for a more realistic file
+            for (i in 0 until 10) {
+                // MPEG Layer III frame (417 bytes each)
+                val frameHeader = byteArrayOf(
+                    0xFF.toByte(), 0xFB.toByte(),  // Frame sync + MPEG 1 + Layer III
+                    0x90.toByte(), 0x00.toByte()    // 128kbps + 44.1kHz + stereo
+                )
+                output.write(frameHeader)
+                output.write(ByteArray(413) { (i and 0xFF).toByte() })  // Fill with pattern
+            }
         }
+    }
+}
+
+/**
+ * Shadow for MediaMetadataRetriever that returns fixed duration for tests.
+ */
+@org.robolectric.annotation.Implements(android.media.MediaMetadataRetriever::class)
+class ShadowMediaMetadataRetrieverForTest {
+    
+    @org.robolectric.annotation.Implementation
+    fun setDataSource(path: String) {
+        // Accept any path
+    }
+    
+    @org.robolectric.annotation.Implementation
+    fun extractMetadata(keyCode: Int): String? {
+        return when (keyCode) {
+            android.media.MediaMetadataRetriever.METADATA_KEY_DURATION -> "3500"  // 3.5 seconds in ms
+            else -> null
+        }
+    }
+    
+    @org.robolectric.annotation.Implementation
+    fun release() {
+        // No-op
     }
 }

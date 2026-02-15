@@ -93,18 +93,10 @@ internal class MediaItemProvider(private val context: Context) {
     operator fun get(mediaId: String): MediaItem? {
         val mediaItem = getNode(mediaId)?.item
         if (mediaItem == null) {
-            // assume it's a track - try guid first (contains dash), fallback to mediaStoreId
-            return if (mediaId.contains("-")) {
-                // guid format (UUID with dashes)
-                val uuid = try { UUID.fromString(mediaId) } catch (e: Exception) { null }
-                uuid?.let { audioHelper.getTrackByGuid(it)?.toMediaItem() }
-            } else {
-                // legacy mediaStoreId format (numeric)
-                val mediaStoreId = mediaId.toLongOrNull() ?: return null
-                audioHelper.getTrack(mediaStoreId)?.toMediaItem()
-            }
+            // assume it's a track - mediaId is guid format (UUID string)
+            val uuid = try { UUID.fromString(mediaId) } catch (e: Exception) { null }
+            return uuid?.let { audioHelper.getTrackByGuid(it)?.toMediaItem() }
         }
-
         return mediaItem
     }
 
@@ -163,24 +155,11 @@ internal class MediaItemProvider(private val context: Context) {
         }
 
         executor.execute {
-            // Parse mediaId - can be guid (UUID) or legacy mediaStoreId (Long)
-            val trackId = if (current.mediaId.contains("-")) {
-                // guid format - use hashCode as trackId (temporary until QueueItem.trackId migrated to String)
-                current.mediaId.hashCode().toLong()
-            } else {
-                current.mediaId.toLongOrNull() ?: 0L
-            }
-            
             val queueItems = mediaItems.mapIndexed { index, mediaItem ->
-                val itemTrackId = if (mediaItem.mediaId.contains("-")) {
-                    mediaItem.mediaId.hashCode().toLong()
-                } else {
-                    mediaItem.mediaId.toLongOrNull() ?: 0L
-                }
-                QueueItem(trackId = itemTrackId, trackOrder = index, isCurrent = false, lastPosition = 0)
+                QueueItem(trackId = mediaItem.mediaId, trackOrder = index, isCurrent = false, lastPosition = 0)
             }
 
-            audioHelper.resetQueue(queueItems, trackId, startPosition)
+            audioHelper.resetQueue(queueItems, current.mediaId, startPosition)
         }
     }
 
@@ -233,7 +212,8 @@ internal class MediaItemProvider(private val context: Context) {
 
     private fun buildGenres() = with(audioHelper) {
         getAllGenres().forEach { genre ->
-            addNodeAndChildren(SMP_GENRES_ROOT_ID, genre.toMediaItem(), getGenreTracks(genre.id).map { it.toMediaItem() })
+            // Genre support removed - skip
+            // addNodeAndChildren(SMP_GENRES_ROOT_ID, genre.toMediaItem(), emptyList())
         }
     }
 

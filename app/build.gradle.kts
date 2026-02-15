@@ -23,6 +23,8 @@ fun hasSigningVars(): Boolean {
             && providers.environmentVariable("SIGNING_STORE_PASSWORD").orNull != null
 }
 
+val musicVersionProps = rootProject.extensions.extraProperties
+
 android {
     compileSdk = project.libs.versions.app.build.compileSDKVersion.get().toInt()
 
@@ -34,10 +36,16 @@ android {
         applicationId = project.property("APP_ID").toString()
         minSdk = project.libs.versions.app.build.minimumSDK.get().toInt()
         targetSdk = project.libs.versions.app.build.targetSDK.get().toInt()
-        versionName = project.property("VERSION_NAME").toString()
-        versionCode = project.property("VERSION_CODE").toString().toInt()
+        @Suppress("UNCHECKED_CAST")
+        val vCode = musicVersionProps.get("versionCode") as Int
+        @Suppress("UNCHECKED_CAST")
+        val vNameFull = musicVersionProps.get("versionNameFull") as String
+        @Suppress("UNCHECKED_CAST")
+        val vArchiveLabel = musicVersionProps.get("archivesVersionLabel") as String
+        versionCode = vCode
+        versionName = vNameFull
         vectorDrawables.useSupportLibrary = true
-        setProperty("archivesBaseName", "musicplayer-$versionName.$versionCode")
+        setProperty("archivesBaseName", "musicplayer-$vArchiveLabel.$vCode")
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
@@ -70,7 +78,7 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug" // Required to install alongside original app (different signing key)
+            applicationIdSuffix = ".test" // Required to install alongside original app (different signing key)
             isDebuggable = true
         }
         release {
@@ -89,7 +97,6 @@ android {
     productFlavors {
         register("core")
         register("foss")
-        register("gplay")
     }
 
     sourceSets {
@@ -187,4 +194,10 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${libs.versions.kotlin.get()}")
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.okhttp)
+}
+
+afterEvaluate {
+    listOf("assembleCoreDebug", "assembleFossDebug").forEach { taskName ->
+        tasks.named(taskName).configure { dependsOn(rootProject.tasks.named("updateVersion")) }
+    }
 }

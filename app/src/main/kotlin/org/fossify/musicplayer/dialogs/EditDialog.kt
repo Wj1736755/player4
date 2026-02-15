@@ -17,9 +17,11 @@ class EditDialog(val activity: BaseSimpleActivity, val track: Track, val callbac
 
     init {
         binding.apply {
-            title.setText(track.title)
-            artist.setText(track.artist)
-            album.setText(track.album)
+            // Title field removed - title now derived from filename
+            title.beGone()
+            // Artist/Album removed - hide these fields
+            artist.beGone()
+            album.beGone()
             val filename = track.path.getFilenameFromPath()
             fileName.setText(filename.substring(0, filename.lastIndexOf(".")))
             extension.setText(track.path.getFilenameExtension())
@@ -35,48 +37,35 @@ class EditDialog(val activity: BaseSimpleActivity, val track: Track, val callbac
             .setNegativeButton(org.fossify.commons.R.string.cancel, null)
             .apply {
                 activity.setupDialogStuff(binding.root, this, R.string.rename_song) { alertDialog ->
-                    alertDialog.showKeyboard(binding.title)
+                    alertDialog.showKeyboard(binding.fileName)
                     alertDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                        val newTitle = binding.title.value
-                        val newArtist = binding.artist.value
-                        val newAlbum = binding.album.value
                         val newFilename = binding.fileName.value
                         val newFileExtension = binding.extension.value
 
-                        if (newTitle.isEmpty() || newArtist.isEmpty() || newFilename.isEmpty() || newFileExtension.isEmpty()) {
+                        if (newFilename.isEmpty() || newFileExtension.isEmpty()) {
                             activity.toast(R.string.rename_song_empty)
                             return@setOnClickListener
                         }
 
-                        if (track.title != newTitle || track.artist != newArtist || track.album != newAlbum) {
-                            updateContentResolver(track, newArtist, newTitle, newAlbum) {
-                                track.artist = newArtist
-                                track.title = newTitle
-                                track.album = newAlbum
-                                val oldPath = track.path
-                                val newPath = "${oldPath.getParentPath()}/$newFilename.$newFileExtension"
-                                if (oldPath == newPath) {
-                                    storeEditedSong(track, oldPath, newPath)
-                                    callback(track)
-                                    alertDialog.dismiss()
-                                    return@updateContentResolver
-                                }
-
-                                if (!isRPlus()) {
-                                    activity.renameFile(oldPath, newPath, false) { success, _ ->
-                                        if (success) {
-                                            storeEditedSong(track, oldPath, newPath)
-                                            track.path = newPath
-                                            callback(track)
-                                        } else {
-                                            activity.toast(R.string.rename_song_error)
-                                        }
-                                        alertDialog.dismiss()
-                                    }
-                                }
-                            }
-                        } else {
+                        val oldPath = track.path
+                        val newPath = "${oldPath.getParentPath()}/$newFilename.$newFileExtension"
+                        
+                        if (oldPath == newPath) {
                             alertDialog.dismiss()
+                            return@setOnClickListener
+                        }
+
+                        if (!isRPlus()) {
+                            activity.renameFile(oldPath, newPath, false) { success, _ ->
+                                if (success) {
+                                    storeEditedSong(track, oldPath, newPath)
+                                    track.path = newPath
+                                    callback(track)
+                                } else {
+                                    activity.toast(R.string.rename_song_error)
+                                }
+                                alertDialog.dismiss()
+                            }
                         }
                     }
                 }
@@ -86,27 +75,11 @@ class EditDialog(val activity: BaseSimpleActivity, val track: Track, val callbac
     private fun storeEditedSong(track: Track, oldPath: String, newPath: String) {
         ensureBackgroundThread {
             try {
-                activity.audioHelper.updateTrackInfo(newPath, track.artist, track.title, oldPath)
+                activity.audioHelper.updateTrackInfo(newPath, oldPath)
             } catch (e: Exception) {
                 activity.showErrorToast(e)
             }
         }
     }
 
-    private fun updateContentResolver(track: Track, newArtist: String, newTitle: String, newAlbum: String, onUpdateMediaStore: () -> Unit) {
-        ensureBackgroundThread {
-            try {
-                activity.handleRecoverableSecurityException { granted ->
-                    if (granted) {
-                        tagHelper.writeTag(track, newArtist, newTitle, newAlbum)
-                        activity.runOnUiThread {
-                            onUpdateMediaStore.invoke()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                activity.toast(org.fossify.commons.R.string.unknown_error_occurred)
-            }
-        }
-    }
 }

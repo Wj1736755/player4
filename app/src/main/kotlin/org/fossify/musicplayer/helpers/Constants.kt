@@ -5,7 +5,6 @@ import org.fossify.commons.helpers.PERMISSION_READ_MEDIA_AUDIO
 import org.fossify.commons.helpers.PERMISSION_WRITE_STORAGE
 import org.fossify.commons.helpers.isTiramisuPlus
 
-const val ALL_TRACKS_PLAYLIST_ID = 1
 const val EQUALIZER_PRESET_CUSTOM = -1
 
 const val ARTIST = "artist"
@@ -68,13 +67,16 @@ const val EQUALIZER_BANDS = "EQUALIZER_BANDS"
 const val PLAYBACK_SPEED = "PLAYBACK_SPEED"
 const val PLAYBACK_SPEED_PROGRESS = "PLAYBACK_SPEED_PROGRESS"
 const val SHOW_TABS = "show_tabs"
-const val WAS_ALL_TRACKS_PLAYLIST_CREATED = "was_all_tracks_playlist_created"
-const val TRACKS_REMOVED_FROM_ALL_TRACKS_PLAYLIST = "tracks_removed_from_all_tracks_playlist"
 const val LAST_EXPORT_PATH = "last_export_path"
 const val EXCLUDED_FOLDERS = "excluded_folders"
 const val SORT_PLAYLIST_PREFIX = "sort_playlist_"
 const val LAST_INSTALLED_BUILD_NUMBER = "last_installed_build_number"
 const val LAST_INSTALLED_VERSION_NAME = "last_installed_version_name"
+const val SCAN_DRY_RUN = "scan_dry_run"
+const val BACKGROUND_AUDIO_ENABLED = "background_audio_enabled"
+const val BACKGROUND_PLAYLIST_NAME = "background_playlist_name"
+const val BACKGROUND_VOLUME = "background_volume"
+const val BACKGROUND_LOOP = "background_loop"
 
 const val SEEK_INTERVAL_MS = 10000L
 const val SEEK_INTERVAL_S = 10

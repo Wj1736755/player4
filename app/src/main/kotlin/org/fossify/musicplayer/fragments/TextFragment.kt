@@ -48,20 +48,14 @@ class TextFragment(context: Context, attributeSet: AttributeSet) : MyViewPagerFr
             return
         }
 
-        // Search in transcription with Polish character normalization
+        // Search in transcription with Polish character normalization and AND/OR operators
         ensureBackgroundThread {
-            // Normalize search text for Polish characters
-            val normalizedSearchText = normalizePolishText(text)
-            
-            // Get all tracks with transcription from database (uses index for faster retrieval)
             val allTracksWithTranscription = context.tracksDAO.getTracksWithTranscription()
-            
-            // Filter in memory with Polish character normalization
-            // This allows "moze" to match "może", "lódź" to match "lodz", etc.
+
             val filtered = ArrayList(
                 allTracksWithTranscription.filter { track ->
                     val normalizedTranscription = normalizePolishText(track.transcription!!)
-                    normalizedTranscription.contains(normalizedSearchText, ignoreCase = true)
+                    matchesSearchQuery(text, normalizedTranscription)
                 }
             )
 
@@ -142,6 +136,31 @@ class TextFragment(context: Context, attributeSet: AttributeSet) : MyViewPagerFr
     }
 
     private fun getAdapter() = binding.textList.adapter as? TracksAdapter
+
+    /**
+     * Matches search query against transcription with support for & (AND) and | (OR) operators.
+     * Precedence: & binds tighter than |
+     * Examples: "kot & pies" → both required; "kot | pies" → either; "kot & pies | ptak" → (kot AND pies) OR ptak
+     */
+    private fun matchesSearchQuery(query: String, normalizedTranscription: String): Boolean {
+        if (query.contains('|')) {
+            val orTerms = query.split('|').map { it.trim() }
+            return orTerms.any { orTerm -> matchesAndQuery(orTerm, normalizedTranscription) }
+        }
+        return matchesAndQuery(query, normalizedTranscription)
+    }
+
+    private fun matchesAndQuery(query: String, normalizedTranscription: String): Boolean {
+        if (query.contains('&')) {
+            val andTerms = query.split('&').map { it.trim() }
+            return andTerms.all { andTerm ->
+                val normalizedTerm = normalizePolishText(andTerm)
+                normalizedTranscription.contains(normalizedTerm, ignoreCase = true)
+            }
+        }
+        val normalizedQuery = normalizePolishText(query)
+        return normalizedTranscription.contains(normalizedQuery, ignoreCase = true)
+    }
 
     /**
      * Normalizes Polish special characters to their ASCII equivalents:

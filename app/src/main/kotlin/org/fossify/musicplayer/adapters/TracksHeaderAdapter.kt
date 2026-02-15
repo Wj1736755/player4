@@ -133,14 +133,10 @@ class TracksHeaderAdapter(activity: SimpleActivity, items: ArrayList<ListItem>, 
             }
 
             trackDuration.text = track.duration.getFormattedDuration()
-            if (track.discNumber != null) {
-                val trackNumber = if (track.trackId != null) track.trackId.toString().padStart(2, '0') else ""
-                trackId.text = context.getString(R.string.track_on_disk, track.discNumber, trackNumber)
-            } else {
-                trackId.text = if (track.trackId != null) track.trackId.toString() else ""
-            }
+            // Track ID and disc number removed - not needed for AI-generated audio
+            trackId.text = ""
             trackImage.beGone()
-            trackId.beVisible()
+            trackId.beGone()
         }
     }
 

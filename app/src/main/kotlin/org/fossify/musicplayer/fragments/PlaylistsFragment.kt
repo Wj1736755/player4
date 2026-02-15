@@ -18,7 +18,6 @@ import org.fossify.musicplayer.extensions.audioHelper
 import org.fossify.musicplayer.extensions.config
 import org.fossify.musicplayer.extensions.mediaScanner
 import org.fossify.musicplayer.extensions.viewBinding
-import org.fossify.musicplayer.helpers.ALL_TRACKS_PLAYLIST_ID
 import org.fossify.musicplayer.helpers.PLAYLIST
 import org.fossify.musicplayer.helpers.TAB_PLAYLISTS
 import org.fossify.musicplayer.models.Events
@@ -39,8 +38,7 @@ class PlaylistsFragment(context: Context, attributeSet: AttributeSet) : MyViewPa
         }
 
         ensureBackgroundThread {
-            val playlists = ArrayList(context.audioHelper.getAllPlaylists()
-                .filter { it.id != ALL_TRACKS_PLAYLIST_ID })  // Exclude "All" playlist
+            val playlists = ArrayList(context.audioHelper.getAllPlaylists())
             val durations = HashMap<Int, Int>()
             playlists.forEach {
                 it.trackCount = context.audioHelper.getPlaylistTrackCount(it.id)

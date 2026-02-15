@@ -25,7 +25,8 @@ import java.util.UUID
     ],
     indices = [
         Index(value = ["playlist_id"]),
-        Index(value = ["track_guid"])
+        Index(value = ["track_guid"]),
+        Index(value = ["playlist_id", "position"], unique = true)
     ]
 )
 data class PlaylistTrack(

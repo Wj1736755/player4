@@ -78,14 +78,14 @@ fun Track.toMediaItem(): MediaItem {
     return buildMediaItem(
         mediaId = guid?.toString() ?: mediaStoreId.toString(),
         title = title,
-        album = album,
-        artist = artist,
-        genre = genre,
+        album = null,
+        artist = null,
+        genre = null,
         mediaType = MediaMetadata.MEDIA_TYPE_MUSIC,
-        trackNumber = trackId,
-        discNumber = discNumber,
+        trackNumber = null,
+        discNumber = null,
         sourceUri = getUri(),
-        artworkUri = coverArt.toUri(),
+        artworkUri = null,
         track = this
     )
 }
@@ -146,7 +146,21 @@ fun Collection<MediaItem>.indexOfTrack(track: Track) = indexOfFirst { it.isSameM
 
 fun Collection<MediaItem>.indexOfTrackOrNull(track: Track) = indexOfFirstOrNull { it.isSameMedia(track) }
 
-fun MediaItem?.isSameMedia(track: Track) = this?.mediaId == (track.guid?.toString() ?: track.mediaStoreId.toString())
+fun MediaItem?.isSameMedia(track: Track): Boolean {
+    if (this == null) return false
+
+    val id = this.mediaId
+
+    // Try to interpret mediaId as UUID and compare using UUID equality
+    try {
+        val parsed = UUID.fromString(id)
+        return track.guid == parsed
+    } catch (_: Exception) {
+        // not a UUID - fall back to comparing mediaStoreId string
+    }
+
+    return id == track.mediaStoreId.toString()
+}
 
 fun MediaItem.toTrack(): Track? = mediaMetadata.extras?.let { createTrackFromBundle(it) }
 
@@ -154,23 +168,14 @@ private fun createBundleFromTrack(track: Track) = bundleOf(
     EXTRA_ID to track.id,
     EXTRA_MEDIA_STORE_ID to track.mediaStoreId,
     EXTRA_TITLE to track.title,
-    EXTRA_ARTIST to track.artist,
     EXTRA_PATH to track.path,
     EXTRA_DURATION to track.duration,
-    EXTRA_ALBUM to track.album,
-    EXTRA_GENRE to track.genre,
-    EXTRA_COVER_ART to track.coverArt,
-    EXTRA_TRACK_ID to (track.trackId ?: Int.MIN_VALUE),
-    EXTRA_DISC_NUMBER to (track.discNumber ?: Int.MIN_VALUE),
     EXTRA_FOLDER_NAME to track.folderName,
-    EXTRA_ALBUM_ID to track.albumId,
-    EXTRA_ARTIST_ID to track.artistId,
-    EXTRA_GENRE_ID to track.genreId,
     EXTRA_YEAR to track.year,
     EXTRA_DATE_ADDED to track.addedAtTimestampUnix,
     EXTRA_FLAGS to track.flags,
     EXTRA_TRANSCRIPTION to track.transcription,
-    EXTRA_GUID to track.guid,
+    EXTRA_GUID to track.guid.toString(),
     EXTRA_CREATED_ON_TIMESTAMP to (track.tagTxxxCreatedAtUnix ?: Long.MIN_VALUE),
     EXTRA_CHECKSUM_AUDIO to track.checksumAudio
 )
@@ -181,11 +186,6 @@ private fun createTrackFromBundle(bundle: Bundle): Track {
         discNumber = null
     }
 
-    var trackId: Int? = bundle.getInt(EXTRA_TRACK_ID)
-    if (trackId == Int.MIN_VALUE) {
-        trackId = null
-    }
-
     var tagTxxxCreatedAtUnix: Long? = bundle.getLong(EXTRA_CREATED_ON_TIMESTAMP)
     if (tagTxxxCreatedAtUnix == Long.MIN_VALUE) {
         tagTxxxCreatedAtUnix = null
@@ -194,24 +194,30 @@ private fun createTrackFromBundle(bundle: Bundle): Track {
     return Track(
         id = bundle.getLong(EXTRA_ID),
         mediaStoreId = bundle.getLong(EXTRA_MEDIA_STORE_ID),
-        title = bundle.getString(EXTRA_TITLE) ?: "",
-        artist = bundle.getString(EXTRA_ARTIST) ?: "",
         path = bundle.getString(EXTRA_PATH) ?: "",
         duration = bundle.getInt(EXTRA_DURATION),
-        album = bundle.getString(EXTRA_ALBUM) ?: "",
-        genre = bundle.getString(EXTRA_GENRE) ?: "",
-        coverArt = bundle.getString(EXTRA_COVER_ART) ?: "",
-        trackId = trackId,
-        discNumber = discNumber,
         folderName = bundle.getString(EXTRA_FOLDER_NAME) ?: "",
-        albumId = bundle.getLong(EXTRA_ALBUM_ID),
-        artistId = bundle.getLong(EXTRA_ARTIST_ID),
-        genreId = bundle.getLong(EXTRA_GENRE_ID),
         year = bundle.getInt(EXTRA_YEAR),
         addedAtTimestampUnix = bundle.getInt(EXTRA_DATE_ADDED),
         flags = bundle.getInt(EXTRA_FLAGS),
         transcription = bundle.getString(EXTRA_TRANSCRIPTION),
-        guid = bundle.getString(EXTRA_GUID)?.let { UUID.fromString(it) },
+        transcriptionNormalized = bundle.getString(EXTRA_TRANSCRIPTION),
+        guid = run {
+            val raw = bundle.get(EXTRA_GUID)
+            when (raw) {
+                is String -> try {
+                    UUID.fromString(raw)
+                } catch (e: Exception) {
+                    android.util.Log.w("MediaItem", "Invalid GUID string in bundle: $raw", e)
+                    null
+                }
+                is UUID -> raw
+                else -> {
+                    android.util.Log.w("MediaItem", "Unexpected type for EXTRA_GUID in bundle: ${raw?.javaClass?.name}")
+                    null
+                }
+            } ?: UUID.randomUUID()
+        },
         tagTxxxCreatedAtUnix = tagTxxxCreatedAtUnix,
         checksumAudio = bundle.getString(EXTRA_CHECKSUM_AUDIO)
     )

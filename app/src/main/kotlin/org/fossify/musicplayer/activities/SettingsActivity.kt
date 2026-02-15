@@ -62,20 +62,23 @@ class SettingsActivity : SimpleControllerActivity() {
         setupManageExcludedFolders()
         setupManageShownTabs()
         setupSwapPrevNext()
+        setupScanDryRun()
         setupReplaceTitle()
         setupExportAllPlaylists()
         setupExportDatabase()
         setupRestoreDatabase()
         setupAutoQueueEnabled()
         setupAutoQueueInterval()
+        setupBackgroundAudio()
         setupElevenLabsSettings()
         updateTextColors(binding.settingsNestedScrollview)
 
         arrayOf(
             binding.settingsColorCustomizationSectionLabel,
+            binding.settingsElevenlabsSectionLabel,
             binding.settingsGeneralSettingsLabel,
             binding.settingsAutoQueueSectionLabel,
-            binding.settingsElevenlabsSectionLabel
+            binding.settingsBackgroundAudioSectionLabel
         ).forEach {
             it.setTextColor(getProperPrimaryColor())
         }
@@ -119,6 +122,14 @@ class SettingsActivity : SimpleControllerActivity() {
         settingsSwapPrevNextHolder.setOnClickListener {
             settingsSwapPrevNext.toggle()
             config.swapPrevNext = settingsSwapPrevNext.isChecked
+        }
+    }
+
+    private fun setupScanDryRun() = binding.apply {
+        settingsScanDryRun.isChecked = config.scanDryRun
+        settingsScanDryRunHolder.setOnClickListener {
+            settingsScanDryRun.toggle()
+            config.scanDryRun = settingsScanDryRun.isChecked
         }
     }
 
@@ -423,6 +434,48 @@ class SettingsActivity : SimpleControllerActivity() {
             minutes < 60 -> "$minutes minutes"
             minutes == 60 -> "1 hour"
             else -> "${minutes / 60} hours"
+        }
+    }
+
+    private fun setupBackgroundAudio() = binding.apply {
+        // Enable/disable switch
+        settingsBackgroundAudioEnabled.isChecked = config.backgroundAudioEnabled
+        settingsBackgroundAudioEnabledHolder.setOnClickListener {
+            settingsBackgroundAudioEnabled.toggle()
+            config.backgroundAudioEnabled = settingsBackgroundAudioEnabled.isChecked
+        }
+
+        // Playlist name
+        settingsBackgroundPlaylistName.setText(config.backgroundPlaylistName)
+        settingsBackgroundPlaylistName.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                val newName = settingsBackgroundPlaylistName.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    config.backgroundPlaylistName = newName
+                }
+            }
+        }
+
+        // Volume seekbar
+        settingsBackgroundVolumeSeekbar.progress = config.backgroundVolume
+        settingsBackgroundVolumeValue.text = "${config.backgroundVolume}%"
+        settingsBackgroundVolumeSeekbar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                settingsBackgroundVolumeValue.text = "$progress%"
+                if (fromUser) {
+                    config.backgroundVolume = progress
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+        })
+
+        // Loop switch
+        settingsBackgroundLoop.isChecked = config.backgroundLoop
+        settingsBackgroundLoopHolder.setOnClickListener {
+            settingsBackgroundLoop.toggle()
+            config.backgroundLoop = settingsBackgroundLoop.isChecked
         }
     }
 

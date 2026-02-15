@@ -238,8 +238,7 @@ object DatabaseExporter {
                             
                             // Tracks are already sorted by position from junction table
                             for (track in tracks) {
-                                val title = "${track.artist} - ${track.title}"
-                                writer.write("$M3U_ENTRY${track.duration}$M3U_DURATION_SEPARATOR$title\n")
+                                writer.write("$M3U_ENTRY${track.duration}$M3U_DURATION_SEPARATOR${track.title}\n")
                                 writer.write("${track.path}\n")
                             }
                         }
@@ -410,8 +409,7 @@ object DatabaseExporter {
                                 
                                 // Tracks are already sorted by position from junction table
                                 for (track in tracks) {
-                                    val title = "${track.artist} - ${track.title}"
-                                    writer.write("$M3U_ENTRY${track.duration}$M3U_DURATION_SEPARATOR$title\n")
+                                    writer.write("$M3U_ENTRY${track.duration}$M3U_DURATION_SEPARATOR${track.title}\n")
                                     writer.write("${track.path}\n")
                                 }
                             }
