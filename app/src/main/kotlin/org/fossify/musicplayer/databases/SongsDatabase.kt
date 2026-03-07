@@ -17,7 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@Database(entities = [Track::class, Playlist::class, QueueItem::class, Artist::class, Album::class, Genre::class, PlayEvent::class, ElevenLabsApiKey::class, PlaylistTrack::class], version = 58)
+@Database(entities = [Track::class, Playlist::class, QueueItem::class, Artist::class, Album::class, Genre::class, PlayEvent::class, ElevenLabsApiKey::class, PlaylistTrack::class], version = 63, exportSchema = false)
 @TypeConverters(UuidConverter::class)
 abstract class SongsDatabase : RoomDatabase() {
 
@@ -40,7 +40,7 @@ abstract class SongsDatabase : RoomDatabase() {
     abstract fun PlaylistTracksDao(): PlaylistTracksDao
 
     companion object {
-        const val DB_VERSION = 58
+        const val DB_VERSION = 60
         private var db: SongsDatabase? = null
 
         fun getInstance(context: Context): SongsDatabase {
@@ -107,6 +107,9 @@ abstract class SongsDatabase : RoomDatabase() {
                             .addMigrations(MIGRATION_55_56)
                             .addMigrations(MIGRATION_56_57)
                             .addMigrations(MIGRATION_57_58)
+                            .addMigrations(MIGRATION_58_59)
+                            .addMigrations(MIGRATION_59_60)
+                            .addMigrations(MIGRATION_60_61, MIGRATION_61_62, MIGRATION_62_63)
                             .build()
                     }
                 }
@@ -526,7 +529,7 @@ abstract class SongsDatabase : RoomDatabase() {
                             `character_count` = 6638,
                             `character_limit_remaining` = 3362,
                             `next_character_count_reset_unix` = 1772699696
-                        WHERE `email` = 'at'
+                        WHERE `email` = 'wojtekadamski0005@op.pl'
                     """)
                 }
             }
@@ -537,15 +540,15 @@ abstract class SongsDatabase : RoomDatabase() {
                 database.apply {
                     // Insert or update API key with user_read permission for history access
                     // First delete if exists, then insert
-                    execSQL("DELETE FROM `elevenlabs_api_keys` WHERE `email` = 'ww'")
+                    execSQL("DELETE FROM `elevenlabs_api_keys` WHERE `email` = 'wojtekadamski0005@op.pl'")
                     execSQL("""
                         INSERT INTO `elevenlabs_api_keys` 
                         (`email`, `api_key`, `is_active`, `created_at_utc`, `last_used_at_utc`, 
                          `character_limit`, `character_count`, `character_limit_remaining`, 
                          `next_character_count_reset_unix`)
                         VALUES 
-                        ('ema', 
-                         'va', 
+                        ('wojtekadamski0005@op.pl', 
+                         'sk_4ac3d077535ca5b46273a738544626c79c7b1f999175ad1d', 
                          1, 
                          ${System.currentTimeMillis()}, 
                          NULL, 
@@ -1465,6 +1468,263 @@ abstract class SongsDatabase : RoomDatabase() {
                     execSQL("CREATE INDEX IF NOT EXISTS index_tracks_transcription_normalized ON tracks(transcription_normalized)")
                     
                     Log.i("SongsDatabase", "Migration 57->58 complete. CHECK constraint added for guid format validation")
+                }
+            }
+        }
+
+        private val MIGRATION_58_59 = object : Migration(58, 59) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.apply {
+                    Log.i("SongsDatabase", "Starting migration 58->59: Generating GUID for tracks with guid = null")
+                    
+                    query("SELECT COUNT(*) FROM tracks WHERE guid IS NULL").use { cursor ->
+                        cursor.moveToFirst()
+                        val nullCount = cursor.getInt(0)
+                        Log.i("SongsDatabase", "Found $nullCount tracks with guid = null")
+                        
+                        if (nullCount > 0) {
+                            query("SELECT id, path FROM tracks WHERE guid IS NULL").use { tracksCursor ->
+                                var generatedCount = 0
+                                while (tracksCursor.moveToNext()) {
+                                    val id = tracksCursor.getLong(0)
+                                    val path = tracksCursor.getString(1)
+                                    val newGuid = java.util.UUID.randomUUID().toString()
+                                    
+                                    execSQL("UPDATE tracks SET guid = ? WHERE id = ?", arrayOf(newGuid, id))
+                                    generatedCount++
+                                    
+                                    if (generatedCount % 100 == 0) {
+                                        Log.d("SongsDatabase", "Generated GUID for $generatedCount/$nullCount tracks...")
+                                    }
+                                }
+                                Log.i("SongsDatabase", "Generated GUID for $generatedCount tracks")
+                            }
+                        }
+                    }
+                    
+                    Log.i("SongsDatabase", "Migration 58->59 complete")
+                }
+            }
+        }
+
+        private val MIGRATION_59_60 = object : Migration(59, 60) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.apply {
+                    Log.i("SongsDatabase", "Starting migration 59->60: Making guid column NOT NULL")
+                    
+                    execSQL("""
+                        CREATE TABLE tracks_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            media_store_id INTEGER NOT NULL,
+                            title TEXT NOT NULL,
+                            artist TEXT NOT NULL,
+                            path TEXT NOT NULL,
+                            duration INTEGER NOT NULL,
+                            album TEXT NOT NULL,
+                            genre TEXT NOT NULL,
+                            cover_art TEXT NOT NULL,
+                            track_id INTEGER,
+                            disc_number INTEGER,
+                            folder_name TEXT NOT NULL DEFAULT '',
+                            album_id INTEGER NOT NULL DEFAULT 0,
+                            artist_id INTEGER NOT NULL DEFAULT 0,
+                            genre_id INTEGER NOT NULL DEFAULT 0,
+                            year INTEGER NOT NULL DEFAULT 0,
+                            added_at_timestamp_unix INTEGER NOT NULL DEFAULT 0,
+                            flags INTEGER NOT NULL DEFAULT 0,
+                            transcription TEXT,
+                            transcription_normalized TEXT,
+                            guid TEXT NOT NULL CHECK (
+                                LENGTH(guid) = 36 AND guid GLOB '????????-????-????-????-????????????'
+                            ),
+                            tag_txxx_created_at_unix INTEGER,
+                            checksum_audio TEXT
+                        )
+                    """.trimIndent())
+                    
+                    execSQL("""
+                        INSERT INTO tracks_new (
+                            id, media_store_id, title, artist, path, duration, album, genre, cover_art,
+                            track_id, disc_number, folder_name, album_id, artist_id, genre_id, year,
+                            added_at_timestamp_unix, flags, transcription, transcription_normalized,
+                            guid, tag_txxx_created_at_unix, checksum_audio
+                        )
+                        SELECT 
+                            id, media_store_id, title, artist, path, duration, album, genre, cover_art,
+                            track_id, disc_number, folder_name, album_id, artist_id, genre_id, year,
+                            added_at_timestamp_unix, flags, transcription, transcription_normalized,
+                            guid, tag_txxx_created_at_unix, checksum_audio
+                        FROM tracks
+                        WHERE guid IS NOT NULL
+                    """.trimIndent())
+                    
+                    execSQL("DROP TABLE tracks")
+                    execSQL("ALTER TABLE tracks_new RENAME TO tracks")
+                    
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tracks_media_store_id ON tracks(media_store_id)")
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tracks_guid ON tracks(guid)")
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tracks_checksum_audio ON tracks(checksum_audio)")
+                    execSQL("CREATE INDEX IF NOT EXISTS index_tracks_transcription ON tracks(transcription)")
+                    execSQL("CREATE INDEX IF NOT EXISTS index_tracks_transcription_normalized ON tracks(transcription_normalized)")
+                    
+                    query("SELECT COUNT(*) FROM tracks").use { cursor ->
+                        cursor.moveToFirst()
+                        val finalCount = cursor.getInt(0)
+                        Log.i("SongsDatabase", "Migration 59->60 complete. guid is now NOT NULL. Total tracks: $finalCount")
+                    }
+                }
+            }
+        }
+        
+        // Drop unused columns: artist, album, genre, coverArt, trackId, discNumber, albumId, artistId, genreId
+        private val MIGRATION_60_61 = object : Migration(60, 61) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.apply {
+                    Log.i("SongsDatabase", "Starting migration 60->61: Removing artist/album/genre columns")
+                    
+                    // Create new table without the columns we don't need
+                    execSQL("""
+                        CREATE TABLE tracks_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            media_store_id INTEGER NOT NULL,
+                            title TEXT NOT NULL,
+                            path TEXT NOT NULL,
+                            duration INTEGER NOT NULL,
+                            folder_name TEXT NOT NULL DEFAULT '',
+                            year INTEGER NOT NULL DEFAULT 0,
+                            added_at_timestamp_unix INTEGER NOT NULL DEFAULT 0,
+                            flags INTEGER NOT NULL DEFAULT 0,
+                            transcription TEXT,
+                            transcription_normalized TEXT,
+                            guid TEXT NOT NULL CHECK (
+                                LENGTH(guid) = 36 AND guid GLOB '????????-????-????-????-????????????'
+                            ),
+                            tag_txxx_created_at_unix INTEGER,
+                            checksum_audio TEXT
+                        )
+                    """.trimIndent())
+                    
+                    // Copy data (only columns we want to keep)
+                    execSQL("""
+                        INSERT INTO tracks_new (
+                            id, media_store_id, title, path, duration, folder_name, year,
+                            added_at_timestamp_unix, flags, transcription, transcription_normalized,
+                            guid, tag_txxx_created_at_unix, checksum_audio
+                        )
+                        SELECT 
+                            id, media_store_id, title, path, duration, folder_name, year,
+                            added_at_timestamp_unix, flags, transcription, transcription_normalized,
+                            guid, tag_txxx_created_at_unix, checksum_audio
+                        FROM tracks
+                    """.trimIndent())
+                    
+                    // Drop old table and rename
+                    execSQL("DROP TABLE tracks")
+                    execSQL("ALTER TABLE tracks_new RENAME TO tracks")
+                    
+                    // Recreate indexes
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tracks_media_store_id ON tracks(media_store_id)")
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tracks_guid ON tracks(guid)")
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tracks_checksum_audio ON tracks(checksum_audio)")
+                    execSQL("CREATE INDEX IF NOT EXISTS index_tracks_transcription ON tracks(transcription)")
+                    execSQL("CREATE INDEX IF NOT EXISTS index_tracks_transcription_normalized ON tracks(transcription_normalized)")
+                    
+                    query("SELECT COUNT(*) FROM tracks").use { cursor ->
+                        cursor.moveToFirst()
+                        val finalCount = cursor.getInt(0)
+                        Log.i("SongsDatabase", "Migration 60->61 complete. Removed artist/album/genre columns. Total tracks: $finalCount")
+                    }
+                }
+            }
+        }
+
+        private val MIGRATION_62_63 = object : Migration(62, 63) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.apply {
+                    Log.i("SongsDatabase", "Starting migration 62->63: Change queue_items.track_id from Long to String (guid)")
+                    
+                    // Create new queue table with TEXT track_id
+                    execSQL("""
+                        CREATE TABLE queue_items_new (
+                            track_id TEXT NOT NULL PRIMARY KEY,
+                            track_order INTEGER NOT NULL,
+                            is_current INTEGER NOT NULL,
+                            last_position INTEGER NOT NULL
+                        )
+                    """.trimIndent())
+                    
+                    // Migrate data: convert mediaStoreId to guid using tracks table join
+                    execSQL("""
+                        INSERT INTO queue_items_new (track_id, track_order, is_current, last_position)
+                        SELECT 
+                            t.guid,
+                            q.track_order,
+                            q.is_current,
+                            q.last_position
+                        FROM queue_items q
+                        INNER JOIN tracks t ON t.media_store_id = q.track_id
+                    """.trimIndent())
+                    
+                    execSQL("DROP TABLE queue_items")
+                    execSQL("ALTER TABLE queue_items_new RENAME TO queue_items")
+                    
+                    Log.i("SongsDatabase", "Migration 62->63 completed successfully")
+                }
+            }
+        }
+        
+        private val MIGRATION_61_62 = object : Migration(61, 62) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.apply {
+                    Log.i("SongsDatabase", "Starting migration 61->62: Removing title column")
+                    
+                    // Create new table without title column
+                    execSQL("""
+                        CREATE TABLE tracks_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            media_store_id INTEGER NOT NULL,
+                            path TEXT NOT NULL,
+                            duration INTEGER NOT NULL,
+                            folder_name TEXT NOT NULL DEFAULT '',
+                            year INTEGER NOT NULL DEFAULT 0,
+                            added_at_timestamp_unix INTEGER NOT NULL DEFAULT 0,
+                            flags INTEGER NOT NULL DEFAULT 0,
+                            transcription TEXT,
+                            transcription_normalized TEXT,
+                            guid TEXT NOT NULL CHECK (
+                                LENGTH(guid) = 36 AND guid GLOB '????????-????-????-????-????????????'
+                            ),
+                            tag_txxx_created_at_unix INTEGER,
+                            checksum_audio TEXT
+                        )
+                    """.trimIndent())
+                    
+                    // Copy data (excluding title)
+                    execSQL("""
+                        INSERT INTO tracks_new (
+                            id, media_store_id, path, duration, folder_name, year,
+                            added_at_timestamp_unix, flags, transcription, transcription_normalized,
+                            guid, tag_txxx_created_at_unix, checksum_audio
+                        )
+                        SELECT 
+                            id, media_store_id, path, duration, folder_name, year,
+                            added_at_timestamp_unix, flags, transcription, transcription_normalized,
+                            guid, tag_txxx_created_at_unix, checksum_audio
+                        FROM tracks
+                    """.trimIndent())
+                    
+                    // Drop old table and rename
+                    execSQL("DROP TABLE tracks")
+                    execSQL("ALTER TABLE tracks_new RENAME TO tracks")
+                    
+                    // Recreate indexes
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tracks_media_store_id ON tracks(media_store_id)")
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tracks_guid ON tracks(guid)")
+                    execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tracks_checksum_audio ON tracks(checksum_audio)")
+                    execSQL("CREATE INDEX IF NOT EXISTS index_tracks_transcription ON tracks(transcription)")
+                    execSQL("CREATE INDEX IF NOT EXISTS index_tracks_transcription_normalized ON tracks(transcription_normalized)")
+                    
+                    Log.i("SongsDatabase", "Migration 61->62 completed successfully")
                 }
             }
         }

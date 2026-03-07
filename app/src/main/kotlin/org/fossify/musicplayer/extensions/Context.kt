@@ -134,41 +134,23 @@ private fun getFolderTrackPaths(folder: File): ArrayList<String> {
 }
 
 fun Context.getArtistCoverArt(artist: Artist, callback: (coverArt: Any?) -> Unit) {
-    ensureBackgroundThread {
-        if (artist.albumArt.isEmpty()) {
-            val track = audioHelper.getArtistTracks(artist.id).firstOrNull()
-            getTrackCoverArt(track, callback)
-        } else {
-            Handler(Looper.getMainLooper()).post {
-                callback(artist.albumArt)
-            }
-        }
+    // Artist support removed - not needed for AI-generated audio
+    Handler(Looper.getMainLooper()).post {
+        callback(null)
     }
 }
 
 fun Context.getAlbumCoverArt(album: Album, callback: (coverArt: Any?) -> Unit) {
-    ensureBackgroundThread {
-        if (album.coverArt.isEmpty()) {
-            val track = audioHelper.getAlbumTracks(album.id).firstOrNull()
-            getTrackCoverArt(track, callback)
-        } else {
-            Handler(Looper.getMainLooper()).post {
-                callback(album.coverArt)
-            }
-        }
+    // Album support removed - not needed for AI-generated audio
+    Handler(Looper.getMainLooper()).post {
+        callback(null)
     }
 }
 
 fun Context.getGenreCoverArt(genre: Genre, callback: (coverArt: Any?) -> Unit) {
-    ensureBackgroundThread {
-        if (genre.albumArt.isEmpty()) {
-            val track = audioHelper.getGenreTracks(genre.id).firstOrNull()
-            getTrackCoverArt(track, callback)
-        } else {
-            Handler(Looper.getMainLooper()).post {
-                callback(genre.albumArt)
-            }
-        }
+    // Genre support removed - not needed for AI-generated audio
+    Handler(Looper.getMainLooper()).post {
+        callback(null)
     }
 }
 
@@ -181,49 +163,15 @@ fun Context.getTrackCoverArt(track: Track?, callback: (coverArt: Any?) -> Unit) 
             return@ensureBackgroundThread
         }
 
-        val coverArt = track.coverArt.ifEmpty {
-            loadTrackCoverArt(track)
-        }
-
+        // Cover art removed - not needed for AI-generated audio
         Handler(Looper.getMainLooper()).post {
-            callback(coverArt)
+            callback("")
         }
     }
 }
 
 fun Context.loadTrackCoverArt(track: Track?): Bitmap? {
-    if (track == null) {
-        return null
-    }
-
-    val artworkUri = track.coverArt
-    if (artworkUri.startsWith("content://")) {
-        try {
-            return MediaStore.Images.Media.getBitmap(contentResolver, artworkUri.toUri())
-        } catch (ignored: Exception) {
-        }
-    }
-
-    if (isQPlus()) {
-        val coverArtHeight = resources.getCoverArtHeight()
-        val size = Size(coverArtHeight, coverArtHeight)
-        if (artworkUri.startsWith("content://")) {
-            try {
-                return contentResolver.loadThumbnail(artworkUri.toUri(), size, null)
-            } catch (ignored: Exception) {
-            }
-        }
-
-        val path = track.path
-        if (path.isNotEmpty() && File(path).exists()) {
-            try {
-                return ThumbnailUtils.createAudioThumbnail(File(track.path), size, null)
-            } catch (ignored: OutOfMemoryError) {
-            } catch (ignored: Exception) {
-            }
-        }
-    }
-
+    // Cover art removed - not needed for AI-generated audio
     return null
 }
 

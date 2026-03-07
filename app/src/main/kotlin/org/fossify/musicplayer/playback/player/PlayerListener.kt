@@ -61,15 +61,9 @@ internal fun PlaybackService.getPlayerListener() = object : Player.Listener {
                 Thread {
                     try {
                         // Try to get track - first by guid (if mediaId is UUID), then by mediaStoreId (legacy numeric)
-                        val track = if (mediaId.contains("-")) {
-                            // mediaId is guid (UUID format with dashes)
-                            val uuid = try { UUID.fromString(mediaId) } catch (e: Exception) { null }
-                            uuid?.let { this@getPlayerListener.audioHelper.getTrackByGuid(it) }
-                        } else {
-                            // mediaId is mediaStoreId (legacy numeric)
-                            val mediaStoreId = mediaId.toLongOrNull()
-                            mediaStoreId?.let { this@getPlayerListener.audioHelper.getTrack(it) }
-                        }
+                        // mediaId is guid (UUID format)
+                        val uuid = try { UUID.fromString(mediaId) } catch (e: Exception) { null }
+                        val track = uuid?.let { this@getPlayerListener.audioHelper.getTrackByGuid(it) }
                         
                         if (track != null) {
                             android.util.Log.e("PlayerListener", "═══════════════════════════════════════════════════════")

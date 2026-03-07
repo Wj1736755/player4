@@ -135,7 +135,7 @@ object TagsProcessor {
         
         track.transcription = tags.transcription
         track.transcriptionNormalized = tags.transcription?.let { ID3TagsHelper.normalizeText(it) }
-        track.guid = tags.guid?.let { UUID.fromString(it) }
+        track.guid = tags.guid?.let { UUID.fromString(it) } ?: UUID.randomUUID()
         track.tagTxxxCreatedAtUnix = tags.createdOnTimestamp
         track.checksumAudio = tags.checksumAudio
         

@@ -39,12 +39,27 @@
                 app:showDelay="250"
                 tools:visibility="visible" />
 
+            <org.fossify.commons.views.MyTextView
+                android:id="@+id/scan_progress_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:textSize="14sp"
+                android:visibility="gone"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/loading_progress_bar"
+                tools:text="Scanning — 250 / 8000"
+                tools:visibility="visible" />
+
             <org.fossify.commons.views.MyViewPager
                 android:id="@+id/view_pager"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 app:layout_constraintBottom_toTopOf="@+id/current_track_bar"
-                app:layout_constraintTop_toTopOf="parent" />
+                app:layout_constraintTop_toBottomOf="@id/scan_progress_text" />
 
             <include
                 android:id="@+id/current_track_bar"

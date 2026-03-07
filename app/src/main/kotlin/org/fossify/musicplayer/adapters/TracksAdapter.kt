@@ -22,8 +22,10 @@ import org.fossify.musicplayer.dialogs.EditDialog
 import org.fossify.musicplayer.extensions.audioHelper
 import org.fossify.musicplayer.extensions.config
 import org.fossify.musicplayer.extensions.getTrackCoverArt
-import org.fossify.musicplayer.helpers.ALL_TRACKS_PLAYLIST_ID
+import org.fossify.musicplayer.extensions.tracksDAO
+import org.fossify.musicplayer.helpers.ID3TagsHelper
 import org.fossify.musicplayer.helpers.PLAYER_SORT_BY_CUSTOM
+import org.fossify.musicplayer.helpers.TXXXTagsWriter
 import org.fossify.musicplayer.inlines.indexOfFirstOrNull
 import org.fossify.musicplayer.models.Events
 import org.fossify.musicplayer.models.Playlist
@@ -74,6 +76,7 @@ class TracksAdapter(
         menu.apply {
             findItem(R.id.cab_remove_from_playlist).isVisible = isPlaylistContent()
             findItem(R.id.cab_rename).isVisible = shouldShowRename()
+            findItem(R.id.cab_edit_transcription).isVisible = shouldShowEditTranscription()
             findItem(R.id.cab_play_next).isVisible = shouldShowPlayNext()
         }
     }
@@ -89,6 +92,7 @@ class TracksAdapter(
             R.id.cab_add_to_queue -> addToQueue()
             R.id.cab_properties -> showProperties()
             R.id.cab_rename -> displayEditDialog()
+            R.id.cab_edit_transcription -> editTranscription()
             R.id.cab_remove_from_playlist -> removeFromPlaylist()
             R.id.cab_delete -> askConfirmDelete()
             R.id.cab_share -> shareFiles()
@@ -121,19 +125,7 @@ class TracksAdapter(
                 }
             }
 
-            // Remove tracks only from this specific playlist, not from all playlists
             context.audioHelper.removeTracksFromPlaylist(selectedTracks, playlistId)
-            
-            // this is to make sure these tracks aren't automatically re-added to the 'All tracks' playlist on rescan
-            if (playlistId == ALL_TRACKS_PLAYLIST_ID) {
-                val removedTrackGuids = selectedTracks.mapNotNull { it.guid?.toString() }
-                if (removedTrackGuids.isNotEmpty()) {
-                    val config = context.config
-                    config.tracksRemovedFromAllTracksPlaylist = config.tracksRemovedFromAllTracksPlaylist.apply {
-                        addAll(removedTrackGuids)
-                    }
-                }
-            }
 
             EventBus.getDefault().post(Events.PlaylistsUpdated())
             context.runOnUiThread {
@@ -220,9 +212,9 @@ class TracksAdapter(
             } else {
                 trackInfo.beVisible()
                 trackInfo.text = if (textToHighlight.isEmpty()) {
-                    "${track.artist} • ${track.album}"
+                    track.folderName
                 } else {
-                    ("${track.artist} • ${track.album}").highlightTextPart(textToHighlight, properPrimaryColor)
+                    track.folderName.highlightTextPart(textToHighlight, properPrimaryColor)
                 }
             }
             trackDragHandle.beVisibleIf(isPlaylistContent() && selectedKeys.isNotEmpty())
@@ -285,6 +277,80 @@ class TracksAdapter(
     }
 
     private fun isPlaylistContent() = sourceType == TYPE_PLAYLIST
+
+    private fun shouldShowEditTranscription(): Boolean {
+        return selectedKeys.size == 1
+    }
+
+    private fun editTranscription() {
+        val selectedTrack = getSelectedTracks().firstOrNull() ?: return
+        
+        val editText = androidx.appcompat.widget.AppCompatEditText(context)
+        editText.setText(selectedTrack.transcription ?: "")
+        editText.setSingleLine(false)
+        editText.maxLines = 10
+        editText.setHint(R.string.edit_transcription_hint)
+        
+        val padding = context.resources.getDimensionPixelSize(org.fossify.commons.R.dimen.activity_margin)
+        editText.setPadding(padding, padding, padding, padding)
+        
+        val builder = activity.getAlertDialogBuilder()
+        builder.setPositiveButton(org.fossify.commons.R.string.ok, null)
+        builder.setNegativeButton(org.fossify.commons.R.string.cancel, null)
+        
+        activity.setupDialogStuff(editText, builder, R.string.edit_transcription) { alertDialog ->
+            alertDialog.showKeyboard(editText)
+            alertDialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val newText = editText.text.toString()
+                
+                ensureBackgroundThread {
+                    try {
+                        val file = java.io.File(selectedTrack.path)
+                        if (!file.exists()) {
+                            context.runOnUiThread {
+                                context.toast(org.fossify.commons.R.string.unknown_error_occurred)
+                            }
+                            return@ensureBackgroundThread
+                        }
+                        
+                        val writer = TXXXTagsWriter(context)
+                        val success = writer.writeTranscription(file, newText)
+                        
+                        if (success) {
+                            selectedTrack.transcription = newText
+                            selectedTrack.transcriptionNormalized = ID3TagsHelper.normalizeText(newText)
+                            
+                            context.tracksDAO.updateTranscription(
+                                transcription = newText,
+                                transcriptionNormalized = selectedTrack.transcriptionNormalized,
+                                guid = selectedTrack.guid
+                            )
+                            
+                            context.runOnUiThread {
+                                val trackIndex = items.indexOfFirstOrNull { it.guid == selectedTrack.guid }
+                                if (trackIndex != null) {
+                                    items[trackIndex] = selectedTrack
+                                    notifyItemChanged(trackIndex)
+                                }
+                                alertDialog.dismiss()
+                                finishActMode()
+                                context.toast(R.string.file_saved)
+                            }
+                        } else {
+                            context.runOnUiThread {
+                                context.toast(org.fossify.commons.R.string.unknown_error_occurred)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("TracksAdapter", "Failed to update transcription", e)
+                        context.runOnUiThread {
+                            context.toast(org.fossify.commons.R.string.unknown_error_occurred)
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     companion object {
         const val TYPE_PLAYLIST = 1

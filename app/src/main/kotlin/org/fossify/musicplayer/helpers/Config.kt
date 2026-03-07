@@ -135,16 +135,6 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getInt(PLAYBACK_SPEED_PROGRESS, -1)
         set(playbackSpeedProgress) = prefs.edit().putInt(PLAYBACK_SPEED_PROGRESS, playbackSpeedProgress).apply()
 
-    var wasAllTracksPlaylistCreated: Boolean
-        get() = prefs.getBoolean(WAS_ALL_TRACKS_PLAYLIST_CREATED, false)
-        set(wasAllTracksPlaylistCreated) = prefs.edit().putBoolean(WAS_ALL_TRACKS_PLAYLIST_CREATED, wasAllTracksPlaylistCreated).apply()
-
-    var tracksRemovedFromAllTracksPlaylist: MutableSet<String>
-        get() = prefs.getStringSet(TRACKS_REMOVED_FROM_ALL_TRACKS_PLAYLIST, HashSet())!!
-        set(tracksRemovedFromAllTracksPlaylist) = prefs.edit().remove(TRACKS_REMOVED_FROM_ALL_TRACKS_PLAYLIST)
-            .putStringSet(TRACKS_REMOVED_FROM_ALL_TRACKS_PLAYLIST, tracksRemovedFromAllTracksPlaylist)
-            .apply()
-
     var showTabs: Int
         get() = prefs.getInt(SHOW_TABS, ALL_TABS_MASK)
         set(showTabs) = prefs.edit().putInt(SHOW_TABS, showTabs).apply()

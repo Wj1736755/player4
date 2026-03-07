@@ -53,6 +53,19 @@ interface PlayEventDao {
     fun getMostPlayedTracks(limit: Int): List<PlayCountResult>
 
     /**
+     * Get tracks played on a specific day (unique tracks, ordered by last played).
+     * Returns tracks with their play count for that day.
+     */
+    @Query("""
+        SELECT trackGuid, COUNT(*) as playCount, MAX(timestamp) as lastPlayed
+        FROM play_events 
+        WHERE timestamp >= :dayStartMillis AND timestamp < :dayEndMillis 
+        GROUP BY trackGuid 
+        ORDER BY lastPlayed DESC
+    """)
+    fun getTracksPlayedOnDay(dayStartMillis: Long, dayEndMillis: Long): List<DailyPlayResult>
+
+    /**
      * Delete events older than specified timestamp (for cleanup/retention).
      */
     @Query("DELETE FROM play_events WHERE timestamp < :timestamp")
@@ -71,5 +84,14 @@ interface PlayEventDao {
 data class PlayCountResult(
     val trackGuid: String,
     val playCount: Int
+)
+
+/**
+ * Result class for daily play queries.
+ */
+data class DailyPlayResult(
+    val trackGuid: String,
+    val playCount: Int,
+    val lastPlayed: Long
 )
 

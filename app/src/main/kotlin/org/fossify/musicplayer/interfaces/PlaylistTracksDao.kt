@@ -26,9 +26,6 @@ interface PlaylistTracksDao {
     @Query("DELETE FROM playlist_tracks WHERE playlist_id = :playlistId")
     fun removeAllTracksFromPlaylist(playlistId: Int)
     
-    @Query("DELETE FROM playlist_tracks WHERE track_guid = :trackGuid")
-    fun removeTrackFromAllPlaylists(trackGuid: UUID)
-    
     // Query operations
     
     @Query("SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = :playlistId")

@@ -62,36 +62,13 @@ class AudioHelper(private val context: Context) {
         return tracks
     }
 
-    fun updateTrackInfo(newPath: String, artist: String, title: String, oldPath: String) {
-        context.tracksDAO.updateSongInfo(newPath, artist, title, oldPath)
-    }
-
-    fun deleteTrack(mediaStoreId: Long) {
-        // Remove from junction table first (if has GUID)
-        val track = context.tracksDAO.getTrackWithMediaStoreId(mediaStoreId)
-        if (track?.guid != null) {
-            context.playlistTracksDAO.removeTrackFromAllPlaylists(track.guid!!)
-        }
-        
-        // Remove from tracks table (CASCADE will also clean junction table via FK)
-        context.tracksDAO.removeTrack(mediaStoreId)
-    }
-
-    // DEPRECATED: Use deleteTracksByGuid() instead (guid-based deletion)
-    // This function is no longer used anywhere in the codebase
-    @Deprecated("Use deleteTracksByGuid(List<UUID>) instead", ReplaceWith("deleteTracksByGuid(tracks.mapNotNull { it.guid })"))
-    fun deleteTracks(tracks: List<Track>) {
-        tracks.forEach {
-            deleteTrack(it.mediaStoreId)
-        }
+    fun updateTrackInfo(newPath: String, oldPath: String) {
+        context.tracksDAO.updateSongInfo(newPath, oldPath)
     }
 
     fun deleteTrackByGuid(guid: UUID) {
-        // Remove from junction table first
-        context.playlistTracksDAO.removeTrackFromAllPlaylists(guid)
-        
-        // Remove from tracks table
         context.tracksDAO.removeTrackByGuid(guid)
+        // playlist_tracks rows are removed by FK CASCADE (PlaylistTrack.track_guid -> Track.guid ON DELETE CASCADE)
     }
 
     fun deleteTracksByGuid(guids: List<UUID>) {
@@ -101,11 +78,6 @@ class AudioHelper(private val context: Context) {
     }
 
     fun removeTracksFromPlaylist(tracks: List<Track>, playlistId: Int) {
-        // "All Tracks" (ID=1) doesn't use junction table - handled by config in TracksAdapter
-        if (playlistId == ALL_TRACKS_PLAYLIST_ID) {
-            return
-        }
-        
         tracks.forEach {
             // Skip tracks without GUID (can't be in junction table)
             if (it.guid != null) {
@@ -132,16 +104,9 @@ class AudioHelper(private val context: Context) {
         return artists.flatMap { getArtistAlbums(it.id) } as ArrayList<Album>
     }
 
-    fun getArtistTracks(artistId: Long): ArrayList<Track> {
-        return context.tracksDAO.getTracksFromArtist(artistId)
-            .applyProperFilenames(config.showFilename)
-    }
+    // Artist support removed - not needed for AI-generated audio
 
-    fun getArtistTracks(artists: List<Artist>): ArrayList<Track> {
-        return getAlbumTracks(
-            albums = getArtistAlbums(artists)
-        )
-    }
+    // Artist support removed - not needed for AI-generated audio
 
     fun deleteArtist(id: Long) {
         context.artistDAO.deleteArtist(id)
@@ -167,17 +132,9 @@ class AudioHelper(private val context: Context) {
         return albums
     }
 
-    fun getAlbumTracks(albumId: Long): ArrayList<Track> {
-        val tracks = context.tracksDAO.getTracksFromAlbum(albumId)
-            .applyProperFilenames(config.showFilename)
-        tracks.sortWith(compareBy({ it.discNumber }, { it.trackId }, { it.title.lowercase() }))
-        return tracks
-    }
+    // Album support removed - not needed for AI-generated audio
 
-    fun getAlbumTracks(albums: List<Album>): ArrayList<Track> {
-        return albums.flatMap { getAlbumTracks(it.id) }
-            .applyProperFilenames(config.showFilename)
-    }
+    // Album support removed - not needed for AI-generated audio
 
     private fun deleteAlbum(id: Long) {
         context.albumsDAO.deleteAlbum(id)
@@ -207,21 +164,7 @@ class AudioHelper(private val context: Context) {
         return genres
     }
 
-    fun getGenreTracks(genreId: Long): ArrayList<Track> {
-        val tracks = context.tracksDAO.getGenreTracks(genreId)
-            .applyProperFilenames(config.showFilename)
-
-        tracks.sortSafely(config.trackSorting)
-        return tracks
-    }
-
-    fun getGenreTracks(genres: List<Genre>): ArrayList<Track> {
-        val tracks = genres.flatMap { context.tracksDAO.getGenreTracks(it.id) }
-            .applyProperFilenames(config.showFilename)
-
-        tracks.sortSafely(config.trackSorting)
-        return tracks
-    }
+    // Genre support removed - not needed for AI-generated audio
 
     private fun deleteGenre(id: Long) {
         context.genresDAO.deleteGenre(id)
@@ -240,33 +183,18 @@ class AudioHelper(private val context: Context) {
     }
 
     fun getPlaylistTracks(playlistId: Int): ArrayList<Track> {
-        // Special case: "All Tracks" (ID=1) - show ALL tracks including those without GUID
-        val tracks = if (playlistId == ALL_TRACKS_PLAYLIST_ID) {
-            getAllTracks().applyProperFilenames(config.showFilename)
-        } else {
-            // Other playlists: use junction table (only tracks with GUID)
-            context.playlistTracksDAO.getTracksForPlaylist(playlistId)
-                .applyProperFilenames(config.showFilename)
-        }
-
+        val tracks = context.playlistTracksDAO.getTracksForPlaylist(playlistId)
+            .applyProperFilenames(config.showFilename)
         tracks.sortSafely(config.getProperPlaylistSorting(playlistId))
         return tracks
     }
 
     fun getPlaylistTrackCount(playlistId: Int): Int {
-        return if (playlistId == ALL_TRACKS_PLAYLIST_ID) {
-            getAllTracks().size
-        } else {
-            context.playlistTracksDAO.getPlaylistTrackCount(playlistId)
-        }
+        return context.playlistTracksDAO.getPlaylistTrackCount(playlistId)
     }
 
     fun getPlaylistTotalDuration(playlistId: Int): Int {
-        val tracks = if (playlistId == ALL_TRACKS_PLAYLIST_ID) {
-            getAllTracks()
-        } else {
-            context.playlistTracksDAO.getTracksForPlaylist(playlistId)
-        }
+        val tracks = context.playlistTracksDAO.getTracksForPlaylist(playlistId)
         android.util.Log.d("AudioHelper", "=== Playlist $playlistId duration calculation ===")
         tracks.forEach { track ->
             android.util.Log.d("AudioHelper", "Track: ${track.title}, duration: ${track.duration}s, path: ${track.path}")
@@ -290,20 +218,11 @@ class AudioHelper(private val context: Context) {
     }
 
     fun removeInvalidAlbumsArtists() {
-        val tracks = context.tracksDAO.getAll()
-        val albums = context.albumsDAO.getAll()
-        val artists = context.artistDAO.getAll()
-
-        val invalidAlbums = albums.filter { album -> tracks.none { it.albumId == album.id } }
-        deleteAlbums(invalidAlbums)
-
-        val invalidArtists = artists.filter { artist -> tracks.none { it.artistId == artist.id } }
-        deleteArtists(invalidArtists)
+        // Artist/Album support removed - not needed for AI-generated audio
     }
 
     fun getQueuedTracks(queueItems: List<QueueItem> = context.queueDAO.getAll()): ArrayList<Track> {
-        // TODO: After QueueItem.trackId migration to String (guid), change to: associateBy { it.guid }
-        val allTracks = getAllTracks().associateBy { it.mediaStoreId }
+        val allTracks = getAllTracks().associateBy { it.guid.toString() }
 
         // make sure we fetch the songs in the order they were displayed in
         val tracks = queueItems.mapNotNull { queueItem ->
@@ -338,7 +257,12 @@ class AudioHelper(private val context: Context) {
                 return@ensureBackgroundThread
             }
 
-            val currentTrack = getTrack(currentItem.trackId)
+            val currentTrack = try {
+                val guid = UUID.fromString(currentItem.trackId)
+                getTrackByGuid(guid)
+            } catch (e: Exception) {
+                null
+            }
             if (currentTrack == null) {
                 callback(emptyList(), 0, 0)
                 return@ensureBackgroundThread
@@ -357,27 +281,26 @@ class AudioHelper(private val context: Context) {
 
     fun initQueue(): ArrayList<Track> {
         val tracks = getAllTracks()
-        val queueItems = tracks.mapIndexed { index, mediaItem ->
-            QueueItem(trackId = mediaItem.mediaStoreId, trackOrder = index, isCurrent = index == 0, lastPosition = 0)
+        val queueItems = tracks.mapIndexed { index, track ->
+            QueueItem(trackId = track.guid.toString(), trackOrder = index, isCurrent = index == 0, lastPosition = 0)
         }
 
         resetQueue(queueItems)
         return tracks
     }
 
-    fun resetQueue(items: List<QueueItem>, currentTrackId: Long? = null, startPosition: Long? = null) {
+    fun resetQueue(items: List<QueueItem>, currentTrackGuid: String? = null, startPosition: Long? = null) {
         context.queueDAO.deleteAllItems()
         context.queueDAO.insertAll(items)
-        if (currentTrackId != null && startPosition != null) {
+        if (currentTrackGuid != null && startPosition != null) {
             val startPositionSeconds = startPosition.milliseconds.inWholeSeconds.toInt()
-            context.queueDAO.saveCurrentTrackProgress(currentTrackId, startPositionSeconds)
-        } else if (currentTrackId != null) {
-            context.queueDAO.saveCurrentTrack(currentTrackId)
+            context.queueDAO.saveCurrentTrackProgress(currentTrackGuid, startPositionSeconds)
+        } else if (currentTrackGuid != null) {
+            context.queueDAO.saveCurrentTrack(currentTrackGuid)
         }
     }
 }
 
 private fun Collection<Track>.applyProperFilenames(showFilename: Int): ArrayList<Track> {
-    return distinctBy { "${it.path}/${it.guid}" }
-        .onEach { it.title = it.getProperTitle(showFilename) } as ArrayList<Track>
+    return distinctBy { it.path to it.guid } as ArrayList<Track>
 }

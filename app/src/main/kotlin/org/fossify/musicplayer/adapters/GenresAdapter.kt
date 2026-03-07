@@ -52,7 +52,8 @@ class GenresAdapter(activity: BaseSimpleActivity, items: ArrayList<Genre>, recyc
     }
 
     override fun getSelectedTracks(): ArrayList<Track> {
-        return context.audioHelper.getGenreTracks(getSelectedItems())
+        // Genre support removed - return empty list
+        return arrayListOf()
     }
 
     private fun askConfirmDelete() {
@@ -60,7 +61,7 @@ class GenresAdapter(activity: BaseSimpleActivity, items: ArrayList<Genre>, recyc
             ensureBackgroundThread {
                 val selectedGenres = getSelectedItems()
                 val positions = selectedGenres.mapNotNull { genre -> items.indexOfFirstOrNull { it.id == genre.id } } as ArrayList<Int>
-                val tracks = context.audioHelper.getGenreTracks(selectedGenres)
+                val tracks = arrayListOf<Track>()
                 context.audioHelper.deleteGenres(selectedGenres)
 
                 context.deleteTracks(tracks) {

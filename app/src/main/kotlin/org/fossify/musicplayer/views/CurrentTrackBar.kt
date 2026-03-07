@@ -40,8 +40,8 @@ class CurrentTrackBar(context: Context, attributeSet: AttributeSet) : RelativeLa
             fadeIn()
         }
 
-        val artist = if (track.artist.trim().isNotEmpty() && track.artist != MediaStore.UNKNOWN_STRING) {
-            " • ${track.artist}"
+        val artist = if (track.folderName.isNotEmpty()) {
+            " • ${track.folderName}"
         } else {
             ""
         }

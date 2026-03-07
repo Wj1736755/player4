@@ -38,6 +38,7 @@ import org.fossify.musicplayer.helpers.M3uImporter.ImportResult
 import org.fossify.musicplayer.models.Events
 import org.fossify.musicplayer.models.Track
 import org.fossify.musicplayer.playback.CustomCommands
+import java.util.UUID
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
@@ -65,15 +66,12 @@ class MainActivity : SimpleMusicActivity() {
     private lateinit var mainHolder: ConstraintLayout
     private lateinit var currentTrackBar: org.fossify.musicplayer.views.CurrentTrackBar
     private lateinit var loadingProgressBar: LinearProgressIndicator
+    private lateinit var scanProgressText: MyTextView
     private lateinit var sleepTimerHolder: ConstraintLayout
     private lateinit var sleepTimerStop: ImageView
     private lateinit var sleepTimerValue: MyTextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 🚨 ONE-TIME AUTO-RESTORE: Restore latest manual backup before Room initialization
-        // This recovers data lost due to the GUID bug in previous versions
-        attemptOneTimeAutoRestore()
-        
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         bindViews()
@@ -131,106 +129,6 @@ class MainActivity : SimpleMusicActivity() {
             Log.d("MainActivity", "Periodic database backup scheduled (every 4 hours)")
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to schedule periodic backup", e)
-        }
-    }
-
-    /**
-     * ONE-TIME auto-restore from latest manual backup
-     * Runs only once for this build to recover data after GUID bug fix
-     * Automatically finds the latest backup in /sdcard/MusicPlayer/manual-backups/
-     */
-    private fun attemptOneTimeAutoRestore() {
-        Log.e("MainActivity", "🔍 AUTO-RESTORE: Starting... (Build ${BuildConfig.VERSION_CODE})")
-        
-        val prefs = getSharedPreferences("music_player_prefs", android.content.Context.MODE_PRIVATE)
-        val restoreKey = "auto_restore_completed_for_build_${BuildConfig.VERSION_CODE}"
-        
-        if (prefs.getBoolean(restoreKey, false)) {
-            Log.w("MainActivity", "AUTO-RESTORE: Already completed for this build")
-            return
-        }
-        
-        // Check if we have MANAGE_EXTERNAL_STORAGE permission (Android 11+)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            if (!android.os.Environment.isExternalStorageManager()) {
-                Log.w("MainActivity", "AUTO-RESTORE: MANAGE_EXTERNAL_STORAGE not granted, requesting...")
-                try {
-                    val intent = android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    intent.data = android.net.Uri.parse("package:$packageName")
-                    startActivity(intent)
-                    android.widget.Toast.makeText(this, "Please grant 'All files access' permission to restore database backup", android.widget.Toast.LENGTH_LONG).show()
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Failed to open permission settings", e)
-                }
-                // Don't mark as completed - will retry on next launch after permission granted
-                return
-            }
-        }
-        
-        try {
-            // Find latest manual backup
-            val backupFolder = File("/storage/emulated/0/MusicPlayer/Backups/manual-backups")
-            Log.i("MainActivity", "AUTO-RESTORE: Checking folder: ${backupFolder.absolutePath}")
-            
-            if (!backupFolder.exists() || !backupFolder.isDirectory) {
-                Log.w("MainActivity", "AUTO-RESTORE: Folder not found")
-                prefs.edit().putBoolean(restoreKey, true).apply()
-                return
-            }
-            
-            val allFiles = backupFolder.listFiles()
-            Log.i("MainActivity", "AUTO-RESTORE: Found ${allFiles?.size ?: 0} files")
-            allFiles?.forEach { f -> 
-                Log.d("MainActivity", "  - ${f.name} (${f.length()} bytes)")
-                Log.d("MainActivity", "    isFile=${f.isFile}, endsWithDb=${f.name.endsWith(".db")}, size>${1024}=${f.length() > 1024}")
-            }
-            
-            val latestBackup = allFiles
-                ?.filter { 
-                    val matchesPattern = it.name.startsWith("songs_manual_backup_dbv_") || it.name == "songs_backup.db"
-                    val isValid = it.isFile && matchesPattern && it.name.endsWith(".db") && it.length() > 1024
-                    Log.d("MainActivity", "  File ${it.name}: matchesPattern=$matchesPattern, isValid=$isValid")
-                    isValid
-                }
-                ?.maxByOrNull { it.lastModified() }
-            
-            if (latestBackup == null) {
-                Log.w("MainActivity", "AUTO-RESTORE: No valid backup found")
-                prefs.edit().putBoolean(restoreKey, true).apply()
-                return
-            }
-            
-            Log.i("MainActivity", "AUTO-RESTORE: Selected backup: ${latestBackup.name}")
-            
-            val dbPath = getDatabasePath("songs.db")
-            
-            // Copy backup to songs.db (BEFORE Room initialization)
-            latestBackup.inputStream().use { input ->
-                dbPath.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            }
-            
-            Log.e("MainActivity", "✅ AUTO-RESTORE SUCCESS: Database restored from ${latestBackup.name}")
-            
-            // Mark as completed BEFORE restart
-            prefs.edit().putBoolean(restoreKey, true).apply()
-            
-            // CRITICAL: Restart app to ensure Room uses the restored database
-            android.widget.Toast.makeText(this, "Database restored. Restarting app...", android.widget.Toast.LENGTH_LONG).show()
-            
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                val intent = packageManager.getLaunchIntentForPackage(packageName)
-                intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(intent)
-                finish()
-                android.os.Process.killProcess(android.os.Process.myPid())
-            }, 1000)
-            
-        } catch (e: Exception) {
-            Log.e("MainActivity", "❌ AUTO-RESTORE FAILED", e)
-            prefs.edit().putBoolean(restoreKey, true).apply()
         }
     }
 
@@ -365,12 +263,14 @@ class MainActivity : SimpleMusicActivity() {
 
         val onDone: (complete: Boolean) -> Unit = { complete ->
             runOnUiThread {
+                loadingProgressBar.hide()
+                scanProgressText.text = ""
+                scanProgressText.beGone()
                 getAllFragments().forEach {
                     it.setupFragment(this)
                 }
 
                 if (complete) {
-                    loadingProgressBar.hide()
                     withPlayer {
                         if (currentMediaItem == null) {
                             maybePreparePlayer()
@@ -384,7 +284,7 @@ class MainActivity : SimpleMusicActivity() {
 
         if (shouldScan) {
             handleNotificationPermission { granted ->
-                mediaScanner.scan(progress = showProgress && granted) { complete ->
+                mediaScanner.scan(progress = showProgress) { complete ->
                     onDone(complete)
                 }
             }
@@ -687,6 +587,16 @@ class MainActivity : SimpleMusicActivity() {
         refreshAllFragments(showProgress = false, shouldScan = false)
     }
 
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    fun scanProgress(event: Events.ScanProgress) {
+        scanProgressText.text = if (event.max > 0) {
+            getString(org.fossify.commons.R.string.scanning) + " — " + event.message
+        } else {
+            event.message
+        }
+        scanProgressText.beVisible()
+    }
+
     private fun bindViews() {
         mainMenu = findViewById(R.id.main_menu)
         mainTabsHolder = findViewById(R.id.main_tabs_holder)
@@ -694,6 +604,7 @@ class MainActivity : SimpleMusicActivity() {
         mainHolder = findViewById(R.id.main_holder)
         currentTrackBar = findViewById(R.id.current_track_bar)
         loadingProgressBar = findViewById(R.id.loading_progress_bar)
+        scanProgressText = findViewById(R.id.scan_progress_text)
         sleepTimerHolder = findViewById(R.id.sleep_timer_holder)
         sleepTimerStop = findViewById(R.id.sleep_timer_stop)
         sleepTimerValue = findViewById(R.id.sleep_timer_value)
@@ -1067,8 +978,22 @@ class MainActivity : SimpleMusicActivity() {
                             // Tag didn't exist before - just verify it was written successfully (can be any value)
                             true // Accept whatever was written (null or non-null)
                         } else {
-                            // Tag existed before - must be preserved exactly
-                            verifyTags.guid == normalizedExistingTags.guid
+                            // Tag existed before - compare as UUIDs when possible
+                            val before = normalizedExistingTags.guid
+                            val after = verifyTags.guid
+                            var preserved = false
+                            try {
+                                val beforeUuid = UUID.fromString(before)
+                                val afterUuid = if (after != null) UUID.fromString(after) else null
+                                preserved = (afterUuid == beforeUuid)
+                            } catch (e: Exception) {
+                                // Could not parse as UUIDs - fall back to string compare but log a warning
+                                preserved = (before == after)
+                                if (!preserved) {
+                                    Log.w("MusicPlayer", "GUID mismatch (string fallback): before='$before', after='$after'")
+                                }
+                            }
+                            preserved
                         }
                         
                         val transcriptionPreserved = if (normalizedExistingTags.transcription == null) {

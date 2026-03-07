@@ -17,12 +17,12 @@ import java.io.File
 import kotlin.math.min
 
 class RoomHelper(val context: Context) {
-    fun insertTracksWithPlaylist(tracks: ArrayList<Track>, playlistId: Int = ALL_TRACKS_PLAYLIST_ID) {
+    fun insertTracksWithPlaylist(tracks: ArrayList<Track>, playlistId: Int) {
         // 1. Insert tracks into tracks table
         context.audioHelper.insertTracks(tracks)
         
-        // 2. Add to junction table (playlist_tracks) - skip for "All Tracks" (ID=1)
-        if (playlistId != 0 && playlistId != ALL_TRACKS_PLAYLIST_ID) {
+        // 2. Add to junction table (playlist_tracks) when adding to a playlist
+        if (playlistId != 0) {
             // Separate tracks with and without GUID
             val withGuid = tracks.filter { it.guid != null }
             val withoutGuid = tracks.filter { it.guid == null }
@@ -123,33 +123,50 @@ class RoomHelper(val context: Context) {
                     discNumber = null
                 }
 
+                val file = File(path)
+                val guidFromFile = if (file.exists()) {
+                    try {
+                        val processed = TagsProcessor.processTrackTags(file, writeToFile = true)
+                        processed.tags?.guid?.let { java.util.UUID.fromString(it) } ?: java.util.UUID.randomUUID()
+                    } catch (e: Exception) {
+                        java.util.UUID.randomUUID()
+                    }
+                } else {
+                    java.util.UUID.randomUUID()
+                }
+                
                 val song = Track(
-                    id = 0, mediaStoreId = mediaStoreId, title = title, artist = artist, path = path, duration = duration, album = album, genre = genre,
-                    coverArt = coverArt, trackId = null, discNumber = discNumber, folderName = folderName, albumId = albumId,
-                    artistId = artistId, genreId = genreId, year = year, addedAtTimestampUnix = dateAdded
+                    id = 0, mediaStoreId = mediaStoreId, path = path, duration = duration,
+                    folderName = folderName, year = year, addedAtTimestampUnix = dateAdded, guid = guidFromFile
                 )
-                song.title = song.getProperTitle(showFilename)
                 songs.add(song)
                 pathsMap.remove(path)
             }
         }
 
         pathsMap.forEach {
-            val unknown = MediaStore.UNKNOWN_STRING
-            val title = context.getTitle(it) ?: unknown
-            val artist = context.getArtist(it) ?: unknown
             val dateAdded = try {
                 (File(it).lastModified() / 1000L).toInt()
             } catch (e: Exception) {
                 0
             }
 
+            val file = File(it)
+            val guidFromFile = if (file.exists()) {
+                try {
+                    val processed = TagsProcessor.processTrackTags(file, writeToFile = true)
+                    processed.tags?.guid?.let { guid -> java.util.UUID.fromString(guid) } ?: java.util.UUID.randomUUID()
+                } catch (e: Exception) {
+                    java.util.UUID.randomUUID()
+                }
+            } else {
+                java.util.UUID.randomUUID()
+            }
+            
             val song = Track(
-                id = 0, mediaStoreId = 0, title = title, artist = artist, path = it, duration = context.getDuration(it) ?: 0, album = "",
-                genre = "", coverArt = "", trackId = null, discNumber = null, folderName = "", albumId = 0, artistId = 0,
-                genreId = 0, year = 0, addedAtTimestampUnix = dateAdded
+                id = 0, mediaStoreId = 0, path = it, duration = context.getDuration(it) ?: 0,
+                folderName = "", year = 0, addedAtTimestampUnix = dateAdded, guid = guidFromFile
             )
-            song.title = song.getProperTitle(showFilename)
             songs.add(song)
         }
 

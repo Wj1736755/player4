@@ -71,9 +71,9 @@ class TracksFragment(context: Context, attributeSet: AttributeSet) : MyViewPager
         val filtered = ArrayList(
             tracks.filter { track ->
                 val title = track.title.normalizeString()
-                val artistAlbum = "${track.artist} - ${track.album}".normalizeString()
+                val folder = track.folderName.normalizeString()
                 title.contains(normalizedText, ignoreCase = true) ||
-                    artistAlbum.contains(normalizedText, ignoreCase = true)
+                    folder.contains(normalizedText, ignoreCase = true)
             }
         )
         getAdapter()?.updateItems(filtered, text)

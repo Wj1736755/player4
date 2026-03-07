@@ -5,7 +5,6 @@ import org.fossify.commons.helpers.PERMISSION_READ_MEDIA_AUDIO
 import org.fossify.commons.helpers.PERMISSION_WRITE_STORAGE
 import org.fossify.commons.helpers.isTiramisuPlus
 
-const val ALL_TRACKS_PLAYLIST_ID = 1
 const val EQUALIZER_PRESET_CUSTOM = -1
 
 const val ARTIST = "artist"
@@ -68,8 +67,6 @@ const val EQUALIZER_BANDS = "EQUALIZER_BANDS"
 const val PLAYBACK_SPEED = "PLAYBACK_SPEED"
 const val PLAYBACK_SPEED_PROGRESS = "PLAYBACK_SPEED_PROGRESS"
 const val SHOW_TABS = "show_tabs"
-const val WAS_ALL_TRACKS_PLAYLIST_CREATED = "was_all_tracks_playlist_created"
-const val TRACKS_REMOVED_FROM_ALL_TRACKS_PLAYLIST = "tracks_removed_from_all_tracks_playlist"
 const val LAST_EXPORT_PATH = "last_export_path"
 const val EXCLUDED_FOLDERS = "excluded_folders"
 const val SORT_PLAYLIST_PREFIX = "sort_playlist_"

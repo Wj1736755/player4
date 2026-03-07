@@ -22,27 +22,14 @@ interface SongsDao {
     // @Query("SELECT * FROM tracks WHERE playlist_id = :playlistId")
     // fun getTracksFromPlaylist(playlistId: Int): List<Track>
 
-    @Query("SELECT * FROM tracks WHERE artist_id = :artistId")
-    fun getTracksFromArtist(artistId: Long): List<Track>
-
-    @Query("SELECT * FROM tracks WHERE album_id = :albumId")
-    fun getTracksFromAlbum(albumId: Long): List<Track>
-
-    // DEPRECATED: Use PlaylistTracksDao.getPlaylistTrackCount() instead (junction table)
-    // @Query("SELECT COUNT(*) FROM tracks WHERE playlist_id = :playlistId")
-    // fun getTracksCountFromPlaylist(playlistId: Int): Int
-
     @Query("SELECT * FROM tracks WHERE folder_name = :folderName COLLATE NOCASE GROUP BY COALESCE(guid, path)")
     fun getTracksFromFolder(folderName: String): List<Track>
 
     @Query("SELECT * FROM tracks WHERE media_store_id = :mediaStoreId")
     fun getTrackWithMediaStoreId(mediaStoreId: Long): Track?
 
-    @Query("SELECT * FROM tracks WHERE genre_id = :genreId")
-    fun getGenreTracks(genreId: Long): List<Track>
-
-    @Query("DELETE FROM tracks WHERE media_store_id = :mediaStoreId")
-    fun removeTrack(mediaStoreId: Long)
+    @Query("SELECT * FROM tracks WHERE path = :path LIMIT 1")
+    fun getTrackByPath(path: String): Track?
 
     @Query("DELETE FROM tracks WHERE guid = :guid")
     fun removeTrackByGuid(guid: UUID)
@@ -55,11 +42,11 @@ interface SongsDao {
     // @Query("DELETE FROM tracks WHERE media_store_id = :mediaStoreId AND playlist_id = :playlistId")
     // fun removeTrackFromPlaylist(mediaStoreId: Long, playlistId: Int)
 
-    @Query("UPDATE tracks SET path = :newPath, artist = :artist, title = :title WHERE path = :oldPath")
-    fun updateSongInfo(newPath: String, artist: String, title: String, oldPath: String)
+    @Query("UPDATE tracks SET path = :newPath WHERE path = :oldPath")
+    fun updateSongInfo(newPath: String, oldPath: String)
 
-    @Query("UPDATE tracks SET cover_art = :coverArt WHERE media_store_id = :id")
-    fun updateCoverArt(coverArt: String, id: Long)
+    @Query("UPDATE tracks SET transcription = :transcription, transcription_normalized = :transcriptionNormalized WHERE guid = :guid")
+    fun updateTranscription(transcription: String?, transcriptionNormalized: String?, guid: UUID)
 
     // DEPRECATED: Use PlaylistTracksDao.updateTrackPosition() instead (junction table)
     // @Query("UPDATE tracks SET order_in_playlist = :index WHERE id = :id")

@@ -31,7 +31,7 @@ class M3uExporter(val activity: BaseSimpleActivity) {
             outputStream.bufferedWriter().use { out ->
                 out.writeLn(M3U_HEADER)
                 for (track in tracks) {
-                    out.writeLn(M3U_ENTRY + track.duration + M3U_DURATION_SEPARATOR + track.artist + " - " + track.title)
+                    out.writeLn(M3U_ENTRY + track.duration + M3U_DURATION_SEPARATOR + track.title)
                     out.writeLn(track.path)
                     exportedEvents++
                 }

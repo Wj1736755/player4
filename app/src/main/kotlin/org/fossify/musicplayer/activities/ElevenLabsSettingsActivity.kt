@@ -1,16 +1,20 @@
 package org.fossify.musicplayer.activities
 
+import android.content.Intent
+import android.content.ActivityNotFoundException
 import android.os.Bundle
 import androidx.recyclerview.widget.LinearLayoutManager
 import org.fossify.commons.extensions.getProperTextColor
 import org.fossify.commons.extensions.toast
 import org.fossify.commons.extensions.viewBinding
 import org.fossify.commons.helpers.NavigationIcon
+import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.musicplayer.R
 import org.fossify.musicplayer.adapters.ElevenLabsApiKeysAdapter
 import org.fossify.musicplayer.databases.SongsDatabase
 import org.fossify.musicplayer.databinding.ActivityElevenlabsSettingsBinding
 import org.fossify.musicplayer.dialogs.AddElevenLabsKeyDialog
+import org.fossify.musicplayer.helpers.ElevenLabsSettingsImporter
 import org.fossify.musicplayer.models.ElevenLabsApiKey
 
 class ElevenLabsSettingsActivity : SimpleActivity() {
@@ -18,6 +22,10 @@ class ElevenLabsSettingsActivity : SimpleActivity() {
     private val binding by viewBinding(ActivityElevenlabsSettingsBinding::inflate)
     private var adapter: ElevenLabsApiKeysAdapter? = null
     private val keys = ArrayList<ElevenLabsApiKey>()
+
+    companion object {
+        private const val PICK_DB_FOR_ELEVENLABS_IMPORT = 4001
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,6 +35,7 @@ class ElevenLabsSettingsActivity : SimpleActivity() {
         setupMaterialScrollListener(binding.elevenlabsKeysList, binding.elevenlabsSettingsAppbar)
         setupToolbar()
         setupFab()
+        setupImportMenu()
         loadKeys()
     }
 
@@ -37,6 +46,47 @@ class ElevenLabsSettingsActivity : SimpleActivity() {
 
     private fun setupToolbar() {
         // AppBar color is set from theme
+    }
+
+    private fun setupImportMenu() {
+        binding.elevenlabsSettingsToolbar.inflateMenu(R.menu.menu_elevenlabs_settings)
+        binding.elevenlabsSettingsToolbar.setOnMenuItemClickListener { menuItem ->
+            if (menuItem.itemId == R.id.import_elevenlabs_from_db) {
+                openDbFilePickerForImport()
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    private fun openDbFilePickerForImport() {
+        try {
+            startActivityForResult(
+                Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "application/x-sqlite3", "*/*"))
+                },
+                PICK_DB_FOR_ELEVENLABS_IMPORT
+            )
+        } catch (e: ActivityNotFoundException) {
+            toast("No file picker found")
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PICK_DB_FOR_ELEVENLABS_IMPORT && resultCode == RESULT_OK && data?.data != null) {
+            val uri = data.data!!
+            ensureBackgroundThread {
+                val (success, message) = ElevenLabsSettingsImporter.importFromUri(this@ElevenLabsSettingsActivity, uri)
+                runOnUiThread {
+                    toast(message)
+                    if (success) loadKeys()
+                }
+            }
+        }
     }
 
     private fun setupFab() {
@@ -56,13 +106,13 @@ class ElevenLabsSettingsActivity : SimpleActivity() {
             
             // Auto-add default API key if not exists
             val existingKeys = db.ElevenLabsApiKeyDao().getAll()
-            val defaultEmail = "some-default@any.com"
+            val defaultEmail = "wojtekadamski0005@op.pl"
             if (existingKeys.none { it.email == defaultEmail }) {
                 val defaultKey = ElevenLabsApiKey(
                     id = 0,
                     email = defaultEmail,
-                    apiKey = "some_api_key",
-                    voiceId = "Some_voiceId",
+                    apiKey = "sk_4ac3d077535ca5b46273a738544626c79c7b1f999175ad1d",
+                    voiceId = "ErXwobaYiN019PkySvjV",
                     isActive = true,
                     createdAtUtc = System.currentTimeMillis(),
                     lastUsedAtUtc = null,

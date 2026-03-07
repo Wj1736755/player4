@@ -92,9 +92,15 @@
     <string name="scan_tags">Scan ID3 Tags</string>
     <string name="scanning_tags">Scanning ID3 tags…</string>
     <string name="tags_scanned">Tags scanned: %d updated</string>
+    <string name="saving_tracks_progress">Saving… %1$d / %2$d</string>
+    <string name="scan_starting">Starting…</string>
+    <string name="scan_querying_storage">Scanning storage…</string>
     <string name="text_search">Text</string>
     <string name="search_transcription">Search in transcription…</string>
     <string name="show_transcription">Transcription</string>
+    <string name="edit_transcription">Edit transcription</string>
+    <string name="transcription">Transcription</string>
+    <string name="edit_transcription_hint">Enter transcription text</string>
     <!-- FAQ -->
     <string name="faq_1_title">How can I fast-forward songs?</string>
     <string name="faq_1_text">You can click on the current or max duration texts near the seekbar, that will move the song either backward, or forward.</string>
@@ -123,6 +129,10 @@
     <string name="api_key_required">Please enter email, API key and Voice ID</string>
     <string name="api_key_added">API key added</string>
     <string name="api_key_deleted">API key deleted</string>
+    <string name="import_elevenlabs_from_db">Import from database file</string>
+    <string name="import_elevenlabs_success">Imported %d ElevenLabs key(s)</string>
+    <string name="import_elevenlabs_no_keys">No ElevenLabs keys found in selected database</string>
+    <string name="import_elevenlabs_error">Import failed: %s</string>
     <string name="generate_audio">Generate Audio</string>
     <string name="restore_today_from_history">Restore Today\'s Files from History</string>
     <string name="text_to_generate">Text to generate audio</string>
@@ -146,6 +156,9 @@
     <string name="file_saved">File saved to library</string>
     <string name="file_save_error">Error saving file: %s</string>
     <string name="play_all">Play All</string>
+    <string name="today">Today</string>
+    <string name="yesterday">Yesterday</string>
+    <string name="select_date">Select Date</string>
     <!--
         Haven't found some strings? There's more at
         https://github.com/FossifyOrg/Commons/tree/master/commons/src/main/res

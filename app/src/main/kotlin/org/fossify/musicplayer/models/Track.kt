@@ -33,29 +33,21 @@ import java.util.UUID
 data class Track(
     @PrimaryKey(autoGenerate = true) var id: Long,
     @ColumnInfo(name = "media_store_id") var mediaStoreId: Long,
-    @ColumnInfo(name = "title") var title: String,
-    @ColumnInfo(name = "artist") var artist: String,
     @ColumnInfo(name = "path") var path: String,
     @ColumnInfo(name = "duration") var duration: Int,
-    @ColumnInfo(name = "album") var album: String,
-    @ColumnInfo(name = "genre") var genre: String,
-    @ColumnInfo(name = "cover_art") val coverArt: String,
-    @ColumnInfo(name = "track_id") val trackId: Int?,  // order id within the tracks' album
-    @ColumnInfo(name = "disc_number") var discNumber: Int?,
     @ColumnInfo(name = "folder_name") var folderName: String,
-    @ColumnInfo(name = "album_id") var albumId: Long,
-    @ColumnInfo(name = "artist_id") var artistId: Long,
-    @ColumnInfo(name = "genre_id") var genreId: Long,
     @ColumnInfo(name = "year") var year: Int,
     @ColumnInfo(name = "added_at_timestamp_unix") var addedAtTimestampUnix: Int,
     @ColumnInfo(name = "flags") var flags: Int = 0,
-    // ID3 TXXX tags from MP3 files
     @ColumnInfo(name = "transcription") var transcription: String? = null,
     @ColumnInfo(name = "transcription_normalized") var transcriptionNormalized: String? = null,
-    @ColumnInfo(name = "guid") var guid: UUID? = null,
+    @ColumnInfo(name = "guid") var guid: UUID,
     @ColumnInfo(name = "tag_txxx_created_at_unix") var tagTxxxCreatedAtUnix: Long? = null,
     @ColumnInfo(name = "checksum_audio") var checksumAudio: String? = null
 ) : Serializable, ListItem() {
+    
+    val title: String
+        get() = path.substringAfterLast('/')
 
     companion object {
         private const val serialVersionUID = 6717978793256852245L
@@ -63,28 +55,15 @@ data class Track(
         fun getComparator(sorting: Int) = Comparator<Track> { first, second ->
             var result = when {
                 sorting and PLAYER_SORT_BY_TITLE != 0 -> {
-                    when {
-                        first.title == MediaStore.UNKNOWN_STRING && second.title != MediaStore.UNKNOWN_STRING -> 1
-                        first.title != MediaStore.UNKNOWN_STRING && second.title == MediaStore.UNKNOWN_STRING -> -1
-                        else -> AlphanumericComparator().compare(first.title.lowercase(), second.title.lowercase())
-                    }
+                    AlphanumericComparator().compare(first.title.lowercase(), second.title.lowercase())
                 }
 
                 sorting and PLAYER_SORT_BY_ARTIST_TITLE != 0 -> {
-                    when {
-                        first.artist == MediaStore.UNKNOWN_STRING && second.artist != MediaStore.UNKNOWN_STRING -> 1
-                        first.artist != MediaStore.UNKNOWN_STRING && second.artist == MediaStore.UNKNOWN_STRING -> -1
-                        else -> AlphanumericComparator().compare(first.artist.lowercase(), second.artist.lowercase())
-                    }
+                    AlphanumericComparator().compare(first.title.lowercase(), second.title.lowercase())
                 }
 
                 sorting and PLAYER_SORT_BY_TRACK_ID != 0 -> {
-                    val discComparison = (first.discNumber ?: Int.MAX_VALUE).compareTo(second.discNumber ?: Int.MAX_VALUE)
-                    if (discComparison == 0) {
-                        first.trackId?.compareTo(second.trackId ?: 0) ?: 0
-                    } else {
-                        discComparison
-                    }
+                    AlphanumericComparator().compare(first.title.lowercase(), second.title.lowercase())
                 }
                 sorting and PLAYER_SORT_BY_DATE_ADDED != 0 -> first.addedAtTimestampUnix.compareTo(second.addedAtTimestampUnix)
                 else -> first.duration.compareTo(second.duration)
@@ -100,16 +79,12 @@ data class Track(
 
     fun getBubbleText(sorting: Int) = when {
         sorting and PLAYER_SORT_BY_TITLE != 0 -> title
-        sorting and PLAYER_SORT_BY_ARTIST_TITLE != 0 -> artist
+        sorting and PLAYER_SORT_BY_ARTIST_TITLE != 0 -> title
         else -> duration.getFormattedDuration()
     }
 
     fun getProperTitle(showFilename: Int): String {
-        return when (showFilename) {
-            SHOW_FILENAME_NEVER -> title
-            SHOW_FILENAME_IF_UNAVAILABLE -> if (title == MediaStore.UNKNOWN_STRING) path.getFilenameFromPath() else title
-            else -> path.getFilenameFromPath()
-        }
+        return path.getFilenameFromPath()
     }
 
     fun getUri(): Uri = if (mediaStoreId == 0L || flags and FLAG_MANUAL_CACHE != 0) {

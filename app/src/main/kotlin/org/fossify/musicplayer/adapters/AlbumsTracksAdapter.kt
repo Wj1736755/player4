@@ -128,7 +128,7 @@ class AlbumsTracksAdapter(
 
     override fun getAllSelectedTracks(): List<Track> {
         val tracks = getSelectedTracks().toMutableList()
-        tracks.addAll(context.audioHelper.getAlbumTracks(getSelectedAlbums()))
+        // Album support removed - not needed for AI-generated audio
         return tracks
     }
 
@@ -155,7 +155,7 @@ class AlbumsTracksAdapter(
             trackFrame.isSelected = selectedKeys.contains(track.hashCode())
             trackTitle.text = track.title
             trackTitle.setTextColor(textColor)
-            trackInfo.text = track.album
+            trackInfo.text = track.folderName
             trackInfo.setTextColor(textColor)
 
             trackId.beGone()

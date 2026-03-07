@@ -11,7 +11,6 @@ import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.musicplayer.databinding.DialogSelectPlaylistBinding
 import org.fossify.musicplayer.databinding.ItemSelectPlaylistBinding
 import org.fossify.musicplayer.extensions.audioHelper
-import org.fossify.musicplayer.helpers.ALL_TRACKS_PLAYLIST_ID
 import org.fossify.musicplayer.models.Playlist
 
 class SelectPlaylistDialog(val activity: Activity, val callback: (playlistId: Int) -> Unit) {
@@ -20,9 +19,7 @@ class SelectPlaylistDialog(val activity: Activity, val callback: (playlistId: In
 
     init {
         ensureBackgroundThread {
-            val playlists = ArrayList(activity.audioHelper.getAllPlaylists()
-                .filter { it.id != ALL_TRACKS_PLAYLIST_ID }  // Exclude "All" playlist
-                .asReversed())
+            val playlists = ArrayList(activity.audioHelper.getAllPlaylists().asReversed())
             activity.runOnUiThread {
                 initDialog(playlists)
 

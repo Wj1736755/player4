@@ -204,17 +204,15 @@ class TracksActivity : SimpleMusicActivity() {
                 }
 
                 TYPE_ALBUM -> {
-                    val albumTracks = audioHelper.getAlbumTracks(album.id)
-                    tracks.addAll(albumTracks)
+                    // Album support removed - not needed for AI-generated audio
 
-                    val header = AlbumHeader(album.id, album.title, album.coverArt, album.year, tracks.size, tracks.sumOf { it.duration }, album.artist)
+                    val header = AlbumHeader(album.id, album.title, "", album.year, 0, 0, "")
                     listItems.add(header)
                     listItems.addAll(tracks)
                 }
 
                 TYPE_TRACKS -> {
-                    val genreTracks = audioHelper.getGenreTracks(genre.id)
-                    tracks.addAll(genreTracks)
+                    // Genre support removed - not needed for AI-generated audio
                 }
 
                 else -> {
@@ -355,7 +353,7 @@ class TracksActivity : SimpleMusicActivity() {
         val normalizedText = text.normalizeString()
         val filtered = tracksIgnoringSearch.filter {
             it.title.normalizeString().contains(normalizedText, true)
-                || ("${it.artist} - ${it.album}").normalizeString().contains(text, true)
+                || it.folderName.normalizeString().contains(text, true)
         }.toMutableList() as ArrayList<Track>
         getTracksAdapter()?.updateItems(filtered, text)
         binding.tracksPlaceholder.beGoneIf(filtered.isNotEmpty())

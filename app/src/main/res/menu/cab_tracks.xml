@@ -32,6 +32,11 @@
         android:title="@string/rename"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/cab_edit_transcription"
+        android:icon="@drawable/ic_edit_vector"
+        android:title="@string/edit_transcription"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/cab_add_to_playlist"
         android:showAsAction="never"
         android:title="@string/add_to_playlist"

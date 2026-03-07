@@ -168,7 +168,7 @@ class TrackActivity : SimpleControllerActivity(), PlaybackSpeedListener {
         setupTopArt(track)
         binding.apply {
             activityTrackTitle.text = track.title
-            activityTrackArtist.text = track.artist
+            activityTrackArtist.text = track.folderName
             
             // Show transcription or placeholder
             if (!track.transcription.isNullOrBlank()) {
@@ -238,12 +238,8 @@ class TrackActivity : SimpleControllerActivity(), PlaybackSpeedListener {
         }
 
         binding.nextTrackHolder.beVisible()
-        val artist =
-            if (track.artist.trim().isNotEmpty() && track.artist != MediaStore.UNKNOWN_STRING) {
-                " • ${track.artist}"
-            } else {
-                ""
-            }
+        // Artist removed - show folder instead
+        val artist = if (track.folderName.isNotEmpty()) " • ${track.folderName}" else ""
 
         @SuppressLint("SetTextI18n")
         binding.nextTrackLabel.text = "${getString(R.string.next_track)} ${track.title}$artist"

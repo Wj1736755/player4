@@ -70,7 +70,7 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug" // Required to install alongside original app (different signing key)
+            applicationIdSuffix = ".test" // Required to install alongside original app (different signing key)
             isDebuggable = true
         }
         release {
@@ -89,7 +89,6 @@ android {
     productFlavors {
         register("core")
         register("foss")
-        register("gplay")
     }
 
     sourceSets {

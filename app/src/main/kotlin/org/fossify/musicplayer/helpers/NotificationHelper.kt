@@ -32,9 +32,18 @@ class NotificationHelper(private val context: Context) {
     }
 
     fun createMediaScannerNotification(contentText: String, progress: Int, max: Int): Notification {
-        val title = context.getString(org.fossify.commons.R.string.scanning)
+        val baseTitle = context.getString(org.fossify.commons.R.string.scanning)
+        val progressSubtitle = when {
+            max > 0 -> if (contentText.isNotEmpty()) contentText else "$progress / $max"
+            contentText.isNotEmpty() -> contentText
+            else -> context.getString(org.fossify.musicplayer.R.string.scan_starting)
+        }
+        val titleWithProgress = when {
+            max > 0 -> "$baseTitle — $progress / $max"
+            else -> baseTitle
+        }
         return NotificationCompat.Builder(context, NOTIFICATION_CHANNEL)
-            .setContentTitle(title)
+            .setContentTitle(titleWithProgress)
             .setSmallIcon(R.drawable.ic_headset_small)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -44,8 +53,8 @@ class NotificationHelper(private val context: Context) {
             .setOngoing(true)
             .setProgress(max, progress, progress == 0)
             .apply {
-                if (contentText.isNotEmpty()) {
-                    setContentText(contentText)
+                if (progressSubtitle.isNotEmpty()) {
+                    setContentText(progressSubtitle)
                 }
             }.build()
     }

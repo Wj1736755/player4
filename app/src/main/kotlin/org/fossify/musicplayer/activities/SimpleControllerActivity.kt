@@ -108,7 +108,7 @@ abstract class SimpleControllerActivity : SimpleActivity(), Player.Listener {
         withPlayer {
             sendCommand(
                 command = CustomCommands.SET_NEXT_ITEM,
-                extras = bundleOf(EXTRA_NEXT_MEDIA_ID to track.mediaStoreId.toString())
+                extras = bundleOf(EXTRA_NEXT_MEDIA_ID to track.guid.toString())
             )
             callback()
         }

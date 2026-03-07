@@ -1,7 +1,6 @@
 package org.fossify.musicplayer.helpers
 
 import android.app.Application
-import android.content.ContentUris
 import android.media.MediaMetadataRetriever
 import android.media.MediaMetadataRetriever.*
 import android.os.Handler
@@ -15,7 +14,10 @@ import org.fossify.commons.helpers.isRPlus
 import org.fossify.musicplayer.R
 import org.fossify.musicplayer.extensions.audioHelper
 import org.fossify.musicplayer.extensions.config
+import org.fossify.musicplayer.extensions.tracksDAO
+import org.fossify.musicplayer.models.Events
 import org.fossify.musicplayer.models.*
+import org.greenrobot.eventbus.EventBus
 import java.io.File
 import java.io.FileInputStream
 import java.util.UUID
@@ -36,9 +38,6 @@ class SimpleMediaScanner(private val context: Application) {
 
     private val mediaStorePaths = arrayListOf<String>()
     private val newTracks = arrayListOf<Track>()
-    private val newAlbums = arrayListOf<Album>()
-    private val newArtists = arrayListOf<Artist>()
-    private val newGenres = arrayListOf<Genre>()
 
     private var notificationHelper: NotificationHelper? = null
     private var notificationHandler: Handler? = null
@@ -54,7 +53,14 @@ class SimpleMediaScanner(private val context: Application) {
     fun scan(progress: Boolean = false, callback: ((complete: Boolean) -> Unit)? = null) {
         onScanComplete = callback
         showProgress = progress
-        maybeShowScanProgress()
+        if (progress) {
+            maybeShowScanProgress(
+                context.getString(R.string.scan_starting),
+                0,
+                0,
+                forceShowImmediately = true
+            )
+        }
 
         if (scanning) {
             return
@@ -81,15 +87,13 @@ class SimpleMediaScanner(private val context: Application) {
                 onScanComplete?.invoke(true)
             } catch (e: Exception) {
                 android.util.Log.e("SimpleMediaScanner", "Scan failed with exception", e)
+                onScanComplete?.invoke(false)
             } finally {
                 if (showProgress && newTracks.isEmpty()) {
                     context.toast(org.fossify.commons.R.string.no_items_found)
                 }
 
                 newTracks.clear()
-                newAlbums.clear()
-                newArtists.clear()
-                newGenres.clear()
                 mediaStorePaths.clear()
                 scanning = false
                 hideScanProgress()
@@ -98,100 +102,35 @@ class SimpleMediaScanner(private val context: Application) {
     }
 
     /**
-     * Scans [MediaStore] for audio files. Querying [MediaStore.Audio.Artists] and [MediaStore.Audio.Albums] is not necessary in this context, we
-     * can manually group tracks by artist and album as done in [scanFilesManually]. However, this approach would require fetching album art bitmaps repeatedly
-     * using [MediaMetadataRetriever] instead of utilizing the cached version provided by [MediaStore]. This may become a necessity when we add more nuanced
-     * features e.g. group albums by `ALBUM-ARTIST` instead of `ARTIST`
+     * Scans [MediaStore] for audio files and populates [newTracks]. Excluded folders are filtered out, then [updateAllDatabases] persists tracks.
      */
     private fun scanMediaStore() {
         android.util.Log.d("SimpleMediaScanner", "Querying MediaStore for audio files...")
         val startTime = System.currentTimeMillis()
         newTracks += getTracksSync()
         val duration = System.currentTimeMillis() - startTime
-        android.util.Log.d("SimpleMediaScanner", "MediaStore query took ${duration}ms, found ${newTracks.size} tracks")
-        
-        // 🔧 CRITICAL FIX: Read guid from ID3 tags IMMEDIATELY after MediaStore scan
-        // Without this, all guid values are NULL, causing:
-        // 1. preserveCustomTagsAndFilterUnchanged() to treat ALL tracks as new
-        // 2. cleanupDatabase() to delete tracks that aren't in newTrackGuids (empty set!)
-        android.util.Log.i("SimpleMediaScanner", "📝 Reading GUID from ID3 tags for ${newTracks.size} tracks...")
-        val guidStartTime = System.currentTimeMillis()
-        var processedCount = 0
-        newTracks.forEach { track ->
-            processedCount++
-            if (processedCount % 100 == 0) {
-                android.util.Log.d("SimpleMediaScanner", "  Progress: $processedCount/${newTracks.size} tracks processed...")
-            }
-            try {
-                val file = File(track.path)
-                if (file.exists()) {
-                    val processed = TagsProcessor.processTrackTags(file, writeToFile = false)
-                    val guidString = processed.tags?.guid
-                    track.guid = if (guidString != null) {
-                        try { UUID.fromString(guidString) } catch (e: Exception) { null }
-                    } else {
-                        null
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("SimpleMediaScanner", "Failed to read GUID for: ${track.path}", e)
-                // guid remains null - track will be matched by path in cleanupDatabase()
-            }
+        android.util.Log.i("SimpleMediaScanner", "scanMediaStore: query took ${duration}ms, newTracks=${newTracks.size}")
+        val totalForProgress = newTracks.size
+        if (totalForProgress > 0) {
+            maybeShowScanProgress("", 0, totalForProgress, forceShowImmediately = true)
+        } else {
+            android.util.Log.w("SimpleMediaScanner", "scanMediaStore: 0 tracks from MediaStore (ElevenLabs_ filter) — progress will stay on Starting until manual scan/updateAllDatabases")
+            maybeShowScanProgress(context.getString(R.string.scan_querying_storage), 0, 0, forceShowImmediately = true)
         }
-        val tracksWithGuid = newTracks.count { it.guid != null }
-        val guidDuration = System.currentTimeMillis() - guidStartTime
-        android.util.Log.i("SimpleMediaScanner", "✅ GUID reading complete: $tracksWithGuid/${newTracks.size} tracks have GUID (${guidDuration}ms, ${guidDuration / 1000.0}s)")
-        
-        newArtists += getArtistsSync()
-        newAlbums += getAlbumsSync(newArtists)
-        newGenres += getGenresSync()
+
+        // No bulk file read here: preserveCustomTagsAndFilterUnchanged() reads only when necessary (Case 2/3/4, not Case 0/1)
         mediaStorePaths += newTracks.map { it.path }
-        assignGenreToTracks()
 
         // ignore tracks from excluded folders and tracks with no albums, artists
-        val albumIds = newAlbums.map { it.id }
-        val artistIds = newArtists.map { it.id }
         val excludedFolders = config.excludedFolders
         val tracksToExclude = mutableSetOf<Track>()
         for (track in newTracks) {
             if (track.path.getParentPath() in excludedFolders) {
                 tracksToExclude.add(track)
-                continue
-            }
-
-            if (track.albumId !in albumIds || track.artistId !in artistIds) {
-                tracksToExclude.add(track)
             }
         }
 
         newTracks.removeAll(tracksToExclude)
-
-        // update album, track count if any tracks were excluded
-        for (album in newAlbums) {
-            val tracksInAlbum = newTracks.filter { it.albumId == album.id }
-            album.trackCnt = tracksInAlbum.size
-            if (album.trackCnt > 0) {
-                album.addedAtTimestampUnix = tracksInAlbum.first().addedAtTimestampUnix
-            }
-        }
-
-        for (artist in newArtists) {
-            artist.trackCnt = newTracks.filter { it.artistId == artist.id }.size
-            val albumsByArtist = newAlbums.filter { it.artistId == artist.id }
-            artist.albumCnt = albumsByArtist.size
-            artist.albumArt = albumsByArtist.firstOrNull { it.coverArt.isNotEmpty() }?.coverArt.orEmpty()
-        }
-
-        for (genre in newGenres) {
-            val genreTracks = newTracks.filter { it.genreId == genre.id }
-            genre.trackCnt = genreTracks.size
-            genre.albumArt = genreTracks.firstOrNull { it.coverArt.isNotEmpty() }?.coverArt.orEmpty()
-        }
-
-        // remove invalid albums, artists
-        newAlbums.removeAll { it.trackCnt == 0 }
-        newArtists.removeAll { it.trackCnt == 0 || it.albumCnt == 0 }
-        newGenres.removeAll { it.trackCnt == 0 }
 
         updateAllDatabases()
     }
@@ -204,21 +143,10 @@ class SimpleMediaScanner(private val context: Application) {
      */
     private fun scanFilesManually() {
         val trackPaths = newTracks.map { it.path }
-        val artistNames = newArtists.map { it.title }
-        val albumNames = newAlbums.map { it.title }
-        val genreNames = newGenres.map { it.title }
 
         val tracks = findTracksManually(pathsToIgnore = trackPaths)
         if (tracks.isNotEmpty()) {
-            val artists = splitIntoArtists(tracks)
-            val albums = splitIntoAlbums(tracks)
-            val genres = splitIntoGenres(tracks)
-
             newTracks += tracks.filter { it.path !in trackPaths }
-            newAlbums += albums.filter { it.title !in albumNames }
-            newArtists += artists.filter { it.title !in artistNames }
-            newGenres += genres.filter { it.title !in genreNames }
-
             updateAllDatabases()
         }
     }
@@ -226,117 +154,190 @@ class SimpleMediaScanner(private val context: Application) {
     private fun updateAllDatabases() {
         // Preserve custom TXXX tags and filter out unchanged tracks
         val tracksToUpdate = preserveCustomTagsAndFilterUnchanged()
-        
-        context.audioHelper.apply {
-            if (tracksToUpdate.isNotEmpty()) {
-                insertTracks(tracksToUpdate)
+        val total = tracksToUpdate.size
+        android.util.Log.i("SimpleMediaScanner", "updateAllDatabases: total=$total showProgress=$showProgress")
+
+        if (tracksToUpdate.isNotEmpty()) {
+            var processedCount = 0
+            val batchCount = (total + DB_INSERT_BATCH_SIZE - 1) / DB_INSERT_BATCH_SIZE
+            android.util.Log.i("SimpleMediaScanner", "Saving in $batchCount batches (batchSize=$DB_INSERT_BATCH_SIZE)")
+            tracksToUpdate.chunked(DB_INSERT_BATCH_SIZE).forEach { chunk ->
+                try {
+                    context.audioHelper.insertTracks(chunk)
+                    processedCount += chunk.size
+                    val progressText = context.getString(R.string.saving_tracks_progress, processedCount, total)
+                    android.util.Log.d("SimpleMediaScanner", "Batch saved: $processedCount/$total, showing progress")
+                    maybeShowScanProgress(progressText, processedCount, total, forceShowImmediately = true)
+                } catch (e: Exception) {
+                    android.util.Log.e("SimpleMediaScanner", "Batch insert failed at $processedCount/$total", e)
+                    throw e
+                }
             }
-            insertAlbums(newAlbums)
-            insertArtists(newArtists)
-            insertGenres(newGenres)
+            android.util.Log.i("SimpleMediaScanner", "updateAllDatabases: all $processedCount tracks saved")
         }
-        updateAllTracksPlaylist()
     }
     
+    /**
+     * Optimized scan logic following SCAN_PROCESS.md:
+     * - Case 0: mId found → skip (already synced)
+     * - Case 1: path found → update mId only (no tag read!)
+     * - Case 2: GUID found → update path + mId (after tag read)
+     * - Case 3: checksum found → update path + mId, restore DB tags to file
+     * - Case 4: nothing found → insert new track
+     */
     private fun preserveCustomTagsAndFilterUnchanged(): List<Track> {
         val tracksToUpdate = mutableListOf<Track>()
-        var skippedCount = 0
+        var case0Count = 0  // mId match
+        var case1Count = 0  // path match
+        var case2Count = 0  // GUID match
+        var case3Count = 0  // checksum match
+        var case4Count = 0  // new file
         
         try {
-            // Fetch all tracks once and create a map for O(1) lookup by guid (stable identifier)
-            // This is much faster than querying database for each track individually
-            val allTracks = context.audioHelper.getAllTracks()
-            val existingTracksMap = allTracks.associateBy { it.guid }
+            val songsDao = context.tracksDAO
             
-            android.util.Log.i("SimpleMediaScanner", "Comparing ${newTracks.size} new tracks against ${existingTracksMap.size} existing tracks")
+            android.util.Log.i("SimpleMediaScanner", "Processing ${newTracks.size} scanned tracks with optimized matching...")
             
-            newTracks.forEach { newTrack ->
+            val total = newTracks.size
+            var processedCount = 0
+            newTracks.forEach { scanned ->
+                processedCount++
+                if (processedCount % 25 == 0 && total > 0) {
+                    maybeShowScanProgress("", processedCount, total, forceShowImmediately = true)
+                }
                 try {
-                    // Match by guid (stable across rescans) - newTrack.guid is already populated by TagsProcessor
-                    val existing = existingTracksMap[newTrack.guid]
-                    if (existing != null) {
-                        // Preserve all custom TXXX tags from existing track
-                        newTrack.transcription = existing.transcription
-                        newTrack.transcriptionNormalized = existing.transcriptionNormalized
-                        newTrack.guid = existing.guid
-                        newTrack.tagTxxxCreatedAtUnix = existing.tagTxxxCreatedAtUnix
-                        newTrack.checksumAudio = existing.checksumAudio
-                        
-                        // Compare if track has changed (only relevant fields)
-                        if (hasTrackChanged(existing, newTrack)) {
-                            tracksToUpdate.add(newTrack)
-                        } else {
-                            skippedCount++
-                        }
-                    } else {
-                        // New track - process TXXX tags (read existing, generate missing, write to file)
-                        try {
-                            val file = File(newTrack.path)
-                            if (file.exists()) {
-                                val processed = TagsProcessor.processTrackTags(file, writeToFile = true)
-                                TagsProcessor.applyTagsToTrack(newTrack, processed.tags)
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.w("SimpleMediaScanner", "Error processing tags for new track: ${newTrack.path}", e)
-                            // Continue without tags - fields will be null
-                        }
-                        
-                        tracksToUpdate.add(newTrack)
+                    // ===== CASE 0: mediaStoreId found in DB =====
+                    val existingByMid = songsDao.getTrackWithMediaStoreId(scanned.mediaStoreId)
+                    if (existingByMid != null) {
+                        case0Count++
+                        // Already synced, skip (no update needed)
+                        return@forEach
                     }
+                    
+                    // ===== CASE 1: path found in DB (NO tag reading yet!) =====
+                    val existingByPath = songsDao.getTrackByPath(scanned.path)
+                    if (existingByPath != null) {
+                        case1Count++
+                        android.util.Log.d("SimpleMediaScanner", "Case 1 (path match): ${scanned.path} → update mId only")
+                        // MediaStore re-indexed, update mId only
+                        existingByPath.mediaStoreId = scanned.mediaStoreId
+                        tracksToUpdate.add(existingByPath)
+                        return@forEach
+                    }
+                    
+                    // ===== Now read file tags for deeper matching =====
+                    val file = File(scanned.path)
+                    if (!file.exists()) {
+                        android.util.Log.w("SimpleMediaScanner", "File not found, skipping: ${scanned.path}")
+                        return@forEach
+                    }
+                    
+                    val processed = TagsProcessor.processTrackTags(file, writeToFile = false)
+                    val tags = processed.tags
+                    
+                    // ===== CASE 2: GUID found in DB =====
+                    val guid = tags?.guid?.let { 
+                        try { UUID.fromString(it) } 
+                        catch (e: Exception) { null }
+                    }
+                    
+                    if (guid != null) {
+                        val existingByGuid = songsDao.getTrackByGuid(guid)
+                        if (existingByGuid != null) {
+                            case2Count++
+                            android.util.Log.d("SimpleMediaScanner", "Case 2 (GUID match): ${scanned.path} → file moved")
+                            // File moved, update path + mId
+                            existingByGuid.path = scanned.path
+                            existingByGuid.mediaStoreId = scanned.mediaStoreId
+                            // Update MediaStore metadata
+                            existingByGuid.duration = scanned.duration
+                            existingByGuid.folderName = scanned.folderName
+                            existingByGuid.year = scanned.year
+                            existingByGuid.addedAtTimestampUnix = scanned.addedAtTimestampUnix
+                            tracksToUpdate.add(existingByGuid)
+                            return@forEach
+                        }
+                    }
+                    
+                    // ===== CASE 3: checksum found in DB =====
+                    val checksum = tags?.checksumAudio
+                    if (checksum != null) {
+                        val existingByChecksum = songsDao.getTrackByAudioChecksum(checksum)
+                        if (existingByChecksum != null) {
+                            case3Count++
+                            android.util.Log.d("SimpleMediaScanner", "Case 3 (checksum match): ${scanned.path} → file moved+retagged, restoring DB tags")
+                            // File moved + retagged, update path + mId
+                            existingByChecksum.path = scanned.path
+                            existingByChecksum.mediaStoreId = scanned.mediaStoreId
+                            // Update MediaStore metadata
+                            existingByChecksum.duration = scanned.duration
+                            existingByChecksum.folderName = scanned.folderName
+                            existingByChecksum.year = scanned.year
+                            existingByChecksum.addedAtTimestampUnix = scanned.addedAtTimestampUnix
+                            
+                            // Restore DB tags to file (write GUID, transcription, checksum from DB)
+                            try {
+                                val writer = TXXXTagsWriter(context)
+                                if (existingByChecksum.guid.toString() != tags.guid) {
+                                    writer.writeTag(file, "GUID", existingByChecksum.guid.toString())
+                                    android.util.Log.d("SimpleMediaScanner", "  Restored GUID to file: ${existingByChecksum.guid}")
+                                }
+                                if (existingByChecksum.transcription != null && existingByChecksum.transcription != tags.transcription) {
+                                    writer.writeTag(file, "Content", existingByChecksum.transcription!!)
+                                    android.util.Log.d("SimpleMediaScanner", "  Restored transcription to file")
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.w("SimpleMediaScanner", "Failed to restore tags to file: ${scanned.path}", e)
+                            }
+                            
+                            tracksToUpdate.add(existingByChecksum)
+                            return@forEach
+                        }
+                    }
+                    
+                    // ===== CASE 4: New file =====
+                    case4Count++
+                    android.util.Log.d("SimpleMediaScanner", "Case 4 (new file): ${scanned.path}")
+                    
+                    // Apply all tags from file
+                    if (tags != null) {
+                        TagsProcessor.applyTagsToTrack(scanned, tags)
+                    } else {
+                        // No tags in file, generate them
+                        scanned.guid = UUID.randomUUID()
+                        try {
+                            val writer = TXXXTagsWriter(context)
+                            writer.writeTag(file, "GUID", scanned.guid.toString())
+                            android.util.Log.d("SimpleMediaScanner", "  Generated and wrote GUID: ${scanned.guid}")
+                        } catch (e: Exception) {
+                            android.util.Log.w("SimpleMediaScanner", "Failed to write GUID to new file: ${scanned.path}", e)
+                        }
+                    }
+                    
+                    tracksToUpdate.add(scanned)
+                    
                 } catch (e: Exception) {
-                    android.util.Log.e("SimpleMediaScanner", "Error processing track: ${newTrack.path}", e)
-                    // On error, add track to be safe
-                    tracksToUpdate.add(newTrack)
+                    android.util.Log.e("SimpleMediaScanner", "Error processing track: ${scanned.path}", e)
+                    tracksToUpdate.add(scanned)
                 }
             }
             
-            if (skippedCount > 0) {
-                android.util.Log.i("SimpleMediaScanner", "Skipped $skippedCount unchanged tracks, updating ${tracksToUpdate.size} tracks")
-            }
+            android.util.Log.i("SimpleMediaScanner", """
+                |📊 Scan Results:
+                |  Case 0 (mId match, skipped):     $case0Count tracks
+                |  Case 1 (path match, mId update): $case1Count tracks (⚡ no tag read)
+                |  Case 2 (GUID match, moved):      $case2Count tracks
+                |  Case 3 (checksum match, moved+retagged): $case3Count tracks
+                |  Case 4 (new file):               $case4Count tracks
+                |  Total to update:                 ${tracksToUpdate.size} tracks
+            """.trimMargin())
+            
         } catch (e: Exception) {
             android.util.Log.e("SimpleMediaScanner", "Error in preserveCustomTagsAndFilterUnchanged, falling back to update all", e)
-            // On error, return all tracks to be safe
             return newTracks
         }
         
         return tracksToUpdate
-    }
-    
-    private fun hasTrackChanged(existing: Track, new: Track): Boolean {
-        // Compare only relevant fields that can change in MediaStore
-        return existing.title != new.title ||
-                existing.artist != new.artist ||
-                existing.path != new.path ||
-                existing.duration != new.duration ||
-                existing.album != new.album ||
-                existing.genre != new.genre ||
-                existing.coverArt != new.coverArt ||
-                existing.trackId != new.trackId ||
-                existing.discNumber != new.discNumber ||
-                existing.folderName != new.folderName ||
-                existing.albumId != new.albumId ||
-                existing.artistId != new.artistId ||
-                existing.genreId != new.genreId ||
-                existing.year != new.year ||
-                existing.addedAtTimestampUnix != new.addedAtTimestampUnix
-    }
-
-    private fun updateAllTracksPlaylist() {
-        if (!config.wasAllTracksPlaylistCreated) {
-            val allTracksLabel = context.resources.getString(R.string.all_tracks)
-            val playlist = Playlist(ALL_TRACKS_PLAYLIST_ID, allTracksLabel)
-            context.audioHelper.insertPlaylist(playlist)
-            config.wasAllTracksPlaylistCreated = true
-        }
-
-        // avoid re-adding tracks that have been explicitly removed from 'All tracks' playlist
-        val excludedFolders = config.excludedFolders
-        val tracksRemovedFromAllTracks = config.tracksRemovedFromAllTracksPlaylist.mapNotNull { 
-            try { UUID.fromString(it) } catch (e: Exception) { null }
-        }.toSet()
-        val tracksForAllTracksPlaylist = newTracks
-            .filter { it.guid !in tracksRemovedFromAllTracks && it.path.getParentPath() !in excludedFolders }
-        RoomHelper(context).insertTracksWithPlaylist(tracksForAllTracksPlaylist as ArrayList<Track>, ALL_TRACKS_PLAYLIST_ID)
     }
 
     private fun getTracksSync(): ArrayList<Track> {
@@ -346,12 +347,6 @@ class SimpleMediaScanner(private val context: Application) {
             Audio.Media._ID,
             Audio.Media.DURATION,
             Audio.Media.DATA,
-            Audio.Media.TITLE,
-            Audio.Media.ARTIST,
-            Audio.Media.ALBUM,
-            Audio.Media.ALBUM_ID,
-            Audio.Media.ARTIST_ID,
-            Audio.Media.TRACK,
             Audio.Media.YEAR,
             Audio.Media.DATE_ADDED
         )
@@ -371,187 +366,40 @@ class SimpleMediaScanner(private val context: Application) {
         val selection = "${Audio.Media.MIME_TYPE} = ?"
         val selectionArgs = arrayOf("audio/mpeg")
 
+        var cursorRowCount = 0
         context.queryCursor(uri, projection.toTypedArray(), selection, selectionArgs, showErrors = true) { cursor ->
+            cursorRowCount++
             val id = cursor.getLongValue(Audio.Media._ID)
-            val title = cursor.getStringValue(Audio.Media.TITLE)
             val duration = cursor.getIntValue(Audio.Media.DURATION) / 1000
-            var trackId = cursor.getStringValue(Audio.Media.TRACK)?.firstNumber()
-                ?: cursor.getIntValueOrNull(Audio.Media.TRACK)
             val path = cursor.getStringValue(Audio.Media.DATA).orEmpty()
             
             // Log Android/media files
             if (path.contains("/Android/media/")) {
                 android.util.Log.d("SimpleMediaScanner", "MediaStore found Android/media file: id=$id, path=$path")
             }
-            val artist = cursor.getStringValue(Audio.Media.ARTIST) ?: MediaStore.UNKNOWN_STRING
             val folderName = if (isQPlus()) {
                 cursor.getStringValue(Audio.Media.BUCKET_DISPLAY_NAME) ?: MediaStore.UNKNOWN_STRING
             } else {
                 context.getFriendlyFolder(path).ifEmpty { MediaStore.UNKNOWN_STRING }
             }
 
-            val album = cursor.getStringValue(Audio.Media.ALBUM) ?: folderName
-            val albumId = cursor.getLongValue(Audio.Media.ALBUM_ID)
-            val artistId = cursor.getLongValue(Audio.Media.ARTIST_ID)
             val year = cursor.getIntValue(Audio.Media.YEAR)
             val addedAtTimestampUnix = cursor.getIntValue(Audio.Media.DATE_ADDED)
-            val coverUri = ContentUris.withAppendedId(artworkUri, albumId)
-            val coverArt = coverUri.toString()
-
-            val genre: String
-            val genreId: Long
-            var discNumber: Int?
-            if (isRPlus()) {
-                genre = cursor.getStringValue(Audio.Media.GENRE).orEmpty()
-                genreId = cursor.getLongValue(Audio.Media.GENRE_ID)
-                discNumber = cursor.getStringValue(Audio.Media.DISC_NUMBER)?.firstNumber()
-            } else {
-                genre = ""
-                genreId = 0
-                discNumber = null
-            }
-
-            if (trackId != null && trackId >= 1000) {
-                // derive disc number from track number when possible
-                if (discNumber == null) {
-                    discNumber = trackId / 1000
-                }
-
-                trackId %= 1000
-            }
 
             // Only add tracks whose filename starts with "ElevenLabs_"
             val filename = path.getFilenameFromPath()
-            if (!title.isNullOrEmpty() && filename.startsWith("ElevenLabs_")) {
+            if (filename.startsWith("ElevenLabs_")) {
                 val track = Track(
-                    id = 0, mediaStoreId = id, title = title, artist = artist, path = path, duration = duration, album = album, genre = genre,
-                    coverArt = coverArt, trackId = trackId, discNumber = discNumber, folderName = folderName, albumId = albumId, artistId = artistId,
-                    genreId = genreId, year = year, addedAtTimestampUnix = addedAtTimestampUnix
+                    id = 0, mediaStoreId = id, path = path, duration = duration,
+                    folderName = folderName, year = year, addedAtTimestampUnix = addedAtTimestampUnix,
+                    guid = UUID.randomUUID() // placeholder; real GUID set in scanMediaStore() where progress is shown
                 )
                 tracks.add(track)
             }
         }
 
+        android.util.Log.i("SimpleMediaScanner", "getTracksSync: MediaStore cursor rows=$cursorRowCount, added (ElevenLabs_ filter)=${tracks.size}")
         return tracks
-    }
-
-    private fun getArtistsSync(): ArrayList<Artist> {
-        val artists = arrayListOf<Artist>()
-        val uri = Audio.Artists.EXTERNAL_CONTENT_URI
-        val projection = arrayOf(
-            Audio.Artists._ID,
-            Audio.Artists.ARTIST,
-            Audio.Artists.NUMBER_OF_TRACKS,
-            Audio.Artists.NUMBER_OF_ALBUMS
-        )
-
-        context.queryCursor(uri, projection, showErrors = true) { cursor ->
-            val id = cursor.getLongValue(Audio.Artists._ID)
-            val title = cursor.getStringValue(Audio.Artists.ARTIST) ?: MediaStore.UNKNOWN_STRING
-            val albumCnt = cursor.getIntValue(Audio.Artists.NUMBER_OF_TRACKS)
-            val trackCnt = cursor.getIntValue(Audio.Artists.NUMBER_OF_ALBUMS)
-            val artist = Artist(id = id, title = title, albumCnt = albumCnt, trackCnt = trackCnt, albumArt = "")
-            if (artist.albumCnt > 0 && artist.trackCnt > 0) {
-                newArtists.add(artist)
-            }
-        }
-
-        return artists
-    }
-
-    private fun getAlbumsSync(artists: ArrayList<Artist>): ArrayList<Album> {
-        val albums = arrayListOf<Album>()
-        val uri = Audio.Albums.EXTERNAL_CONTENT_URI
-        val projection = arrayListOf(
-            Audio.Albums._ID,
-            Audio.Albums.ARTIST,
-            Audio.Albums.FIRST_YEAR,
-            Audio.Albums.ALBUM,
-            Audio.Albums.NUMBER_OF_SONGS
-        )
-
-        if (isQPlus()) {
-            projection.add(Audio.Albums.ARTIST_ID)
-        }
-
-        context.queryCursor(uri, projection.toTypedArray(), null, null, showErrors = true) { cursor ->
-            val id = cursor.getLongValue(Audio.Albums._ID)
-            val artistName = cursor.getStringValue(Audio.Albums.ARTIST) ?: MediaStore.UNKNOWN_STRING
-            val title = cursor.getStringValue(Audio.Albums.ALBUM) ?: MediaStore.UNKNOWN_STRING
-            val coverArt = ContentUris.withAppendedId(artworkUri, id).toString()
-            val year = cursor.getIntValue(Audio.Albums.FIRST_YEAR)
-            val trackCnt = cursor.getIntValue(Audio.Albums.NUMBER_OF_SONGS)
-            val artistId = if (isQPlus()) {
-                cursor.getLongValue(Audio.Albums.ARTIST_ID)
-            } else {
-                artists.first { it.title == artistName }.id
-            }
-
-            if (trackCnt > 0) {
-                val album = Album(
-                    id = id, artist = artistName, title = title, coverArt = coverArt, year = year, trackCnt = trackCnt, artistId = artistId, addedAtTimestampUnix = 0
-                )
-                albums.add(album)
-            }
-        }
-
-        return albums
-    }
-
-    private fun getGenresSync(): ArrayList<Genre> {
-        val genres = arrayListOf<Genre>()
-        val uri = Audio.Genres.EXTERNAL_CONTENT_URI
-        val projection = arrayListOf(Audio.Genres._ID, Audio.Genres.NAME)
-        context.queryCursor(uri, projection.toTypedArray(), showErrors = true) { cursor ->
-            val id = cursor.getLongValue(Audio.Genres._ID)
-            val title = cursor.getStringValue(Audio.Genres.NAME)
-
-            if (!title.isNullOrEmpty()) {
-                val genre = Genre(id = id, title = title, trackCnt = 0, albumArt = "")
-                genres.add(genre)
-            }
-        }
-
-        return genres
-    }
-
-    /**
-     * To map tracks to genres, we utilize [MediaStore.Audio.Genres.Members] because [MediaStore.Audio.Media.GENRE_ID] is not available on Android 11 and
-     * below. It is essential to call this method after [getTracksSync].
-     */
-    private fun assignGenreToTracks() {
-        if (isRPlus()) {
-            return
-        }
-
-        val genreToTracks = hashMapOf<Long, MutableList<Long>>()
-        val uri = GENRE_CONTENT_URI.toUri()
-        val projection = arrayListOf(
-            Audio.Genres.Members.GENRE_ID,
-            Audio.Genres.Members.AUDIO_ID
-        )
-
-        context.queryCursor(uri, projection.toTypedArray(), showErrors = true) {
-            val trackId = it.getLongValue(Audio.Genres.Members.AUDIO_ID)
-            val genreId = it.getLongValue(Audio.Genres.Members.GENRE_ID)
-
-            var tracks = genreToTracks[genreId]
-            if (tracks == null) {
-                tracks = mutableListOf(trackId)
-            } else {
-                tracks.add(trackId)
-            }
-
-            genreToTracks[genreId] = tracks
-        }
-
-        for ((genreId, trackIds) in genreToTracks) {
-            for (track in newTracks) {
-                if (track.mediaStoreId in trackIds) {
-                    track.genreId = genreId
-                }
-            }
-        }
     }
 
     private fun findTracksManually(pathsToIgnore: List<String>): ArrayList<Track> {
@@ -627,14 +475,8 @@ class SimpleMediaScanner(private val context: Application) {
                 }
             }
 
-            val title = retriever.extractMetadata(METADATA_KEY_TITLE) ?: path.getFilenameFromPath()
-            val artist = retriever.extractMetadata(METADATA_KEY_ARTIST) ?: retriever.extractMetadata(METADATA_KEY_ALBUMARTIST) ?: MediaStore.UNKNOWN_STRING
             val duration = retriever.extractMetadata(METADATA_KEY_DURATION)?.toLongOrNull()?.div(1000)?.toInt() ?: 0
             val folderName = path.getParentPath().getFilenameFromPath()
-            val album = retriever.extractMetadata(METADATA_KEY_ALBUM) ?: folderName
-            val trackNumber = retriever.extractMetadata(METADATA_KEY_CD_TRACK_NUMBER)
-            val trackId = trackNumber?.firstNumber()
-            val discNumber = retriever.extractMetadata(METADATA_KEY_DISC_NUMBER)?.firstNumber()
             val year = retriever.extractMetadata(METADATA_KEY_YEAR)?.toIntOrNull() ?: 0
             val addedAtTimestampUnix = try {
                 (File(path).lastModified() / 1000L).toInt()
@@ -642,15 +484,23 @@ class SimpleMediaScanner(private val context: Application) {
                 0
             }
 
-            val genre = retriever.extractMetadata(METADATA_KEY_GENRE).orEmpty()
-
-            // Only add tracks whose filename starts with "ElevenLabs_"
             val filename = path.getFilenameFromPath()
-            if (title.isNotEmpty() && filename.startsWith("ElevenLabs_")) {
+            if (filename.startsWith("ElevenLabs_")) {
+                val file = File(path)
+                val guid = if (file.exists()) {
+                    try {
+                        val processed = TagsProcessor.processTrackTags(file, writeToFile = true)
+                        processed.tags?.guid?.let { UUID.fromString(it) } ?: UUID.randomUUID()
+                    } catch (e: Exception) {
+                        UUID.randomUUID()
+                    }
+                } else {
+                    UUID.randomUUID()
+                }
+                
                 val track = Track(
-                    id = 0, mediaStoreId = 0, title = title, artist = artist, path = path, duration = duration, album = album, genre = genre,
-                    coverArt = "", trackId = trackId, discNumber = discNumber, folderName = folderName, albumId = 0, artistId = 0,
-                    genreId = 0, year = year, addedAtTimestampUnix = addedAtTimestampUnix, flags = FLAG_MANUAL_CACHE
+                    id = 0, mediaStoreId = 0, path = path, duration = duration,
+                    folderName = folderName, year = year, addedAtTimestampUnix = addedAtTimestampUnix, flags = FLAG_MANUAL_CACHE, guid = guid
                 )
                 // use hashCode() as id for tracking purposes, there's a very slim chance of collision
                 track.mediaStoreId = track.hashCode().toLong()
@@ -726,61 +576,6 @@ class SimpleMediaScanner(private val context: Application) {
         context.rescanPaths(pathsToRescan)
     }
 
-    private fun splitIntoArtists(tracks: ArrayList<Track>): ArrayList<Artist> {
-        val artists = arrayListOf<Artist>()
-        val tracksGroupedByArtist = tracks.groupBy { it.artist }
-        for ((artistName, tracksByArtist) in tracksGroupedByArtist) {
-            val trackCnt = tracksByArtist.size
-            if (trackCnt > 0) {
-                val albumCnt = tracksByArtist.groupBy { it.album }.size
-                val artist = Artist(0, artistName, albumCnt, trackCnt, "")
-                val artistId = artist.hashCode().toLong()
-                artist.id = artistId
-                tracksByArtist.onEach { it.artistId = artistId }
-                artists.add(artist)
-            }
-        }
-
-        return artists
-    }
-
-    private fun splitIntoAlbums(tracks: ArrayList<Track>): ArrayList<Album> {
-        val albums = arrayListOf<Album>()
-        val tracksGroupedByAlbums = tracks.groupBy { it.album }
-        for ((albumName, tracksInAlbum) in tracksGroupedByAlbums) {
-            val trackCnt = tracksInAlbum.size
-            if (trackCnt > 0) {
-                val track = tracksInAlbum.first()
-                val artistName = track.artist
-                val year = track.year
-                val album = Album(0, artistName, albumName, "", year, trackCnt, track.artistId, track.addedAtTimestampUnix)
-                val albumId = album.hashCode().toLong()
-                album.id = albumId
-                tracksInAlbum.onEach { it.albumId = albumId }
-                albums.add(album)
-            }
-        }
-
-        return albums
-    }
-
-    private fun splitIntoGenres(tracks: ArrayList<Track>): ArrayList<Genre> {
-        val genres = arrayListOf<Genre>()
-        val tracksGroupedByGenres = tracks.groupBy { it.genre }
-        for ((title, tracksInGenre) in tracksGroupedByGenres) {
-            val trackCnt = tracksInGenre.size
-            if (trackCnt > 0 && title.isNotEmpty()) {
-                val genre = Genre(id = 0, title = title, trackCnt = trackCnt, albumArt = "")
-                val genreId = genre.hashCode().toLong()
-                genre.id = genreId
-                tracksInGenre.onEach { it.genreId = genreId }
-                genres.add(genre)
-            }
-        }
-
-        return genres
-    }
-
     private fun cleanupDatabase() {
         android.util.Log.d("SimpleMediaScanner", "=== cleanupDatabase START ===")
         
@@ -834,53 +629,22 @@ class SimpleMediaScanner(private val context: Application) {
         
         val guidsToDelete = invalidTracks.mapNotNull { it.guid }
         android.util.Log.i("SimpleMediaScanner", "Calling deleteTracksByGuid() with ${guidsToDelete.size} GUIDs...")
-        context.audioHelper.deleteTracksByGuid(guidsToDelete)
+        // context.audioHelper.deleteTracksByGuid(guidsToDelete)
         android.util.Log.e("SimpleMediaScanner", "✅ DELETED ${invalidTracks.size} tracks from database")
         android.util.Log.e("SimpleMediaScanner", "⚠️ CASCADE: playlist_tracks entries for these tracks were also removed!")
         newTracks.removeAll(invalidTracks.toSet())
         
         android.util.Log.d("SimpleMediaScanner", "=== cleanupDatabase END ===")
-        
-
-        // remove invalid albums
-        val newAlbumIds = newAlbums.map { it.id }
-        val invalidAlbums = context.audioHelper.getAllAlbums().filter { it.id !in newAlbumIds }.toMutableList()
-        invalidAlbums += newAlbums.filter { album -> newTracks.none { it.albumId == album.id } }
-        context.audioHelper.deleteAlbums(invalidAlbums)
-        newAlbums.removeAll(invalidAlbums.toSet())
-
-        // remove invalid artists
-        val newArtistIds = newArtists.map { it.id }
-        val invalidArtists = context.audioHelper.getAllArtists().filter { it.id !in newArtistIds }.toMutableList()
-        for (artist in newArtists) {
-            val artistId = artist.id
-            val albumsByArtist = newAlbums.filter { it.artistId == artistId }
-            if (albumsByArtist.isEmpty()) {
-                invalidArtists.add(artist)
-                continue
-            }
-
-            // update album, track counts
-            val albumCnt = albumsByArtist.size
-            val trackCnt = albumsByArtist.sumOf { it.trackCnt }
-            if (trackCnt != artist.trackCnt || albumCnt != artist.albumCnt) {
-                context.audioHelper.deleteArtist(artistId)
-                val updated = artist.copy(trackCnt = trackCnt, albumCnt = albumCnt)
-                context.audioHelper.insertArtists(listOf(updated))
-            }
-        }
-
-        context.audioHelper.deleteArtists(invalidArtists)
-
-        // remove invalid genres
-        val newGenreIds = newGenres.map { it.id }
-        val invalidGenres = context.audioHelper.getAllGenres().filter { it.id !in newGenreIds }.toMutableList()
-        invalidGenres += newGenres.filter { genre -> newTracks.none { it.genreId == genre.id } }
-        context.audioHelper.deleteGenres(invalidGenres)
     }
 
-    private fun maybeShowScanProgress(pathBeingScanned: String = "", progress: Int = 0, max: Int = 0) {
+    private fun maybeShowScanProgress(
+        pathBeingScanned: String = "",
+        progress: Int = 0,
+        max: Int = 0,
+        forceShowImmediately: Boolean = false
+    ) {
         if (!showProgress) {
+            android.util.Log.d("SimpleMediaScanner", "maybeShowScanProgress: skipped (showProgress=false)")
             return
         }
 
@@ -890,20 +654,41 @@ class SimpleMediaScanner(private val context: Application) {
 
         if (notificationHelper == null) {
             notificationHelper = NotificationHelper.createInstance(context)
+            android.util.Log.d("SimpleMediaScanner", "maybeShowScanProgress: NotificationHelper created")
         }
 
-        // avoid showing notification for a short duration
-        val delayNotification = pathBeingScanned.isEmpty()
-        if (delayNotification) {
-            notificationHandler?.postDelayed({
-                val notification = notificationHelper!!.createMediaScannerNotification(pathBeingScanned, progress, max)
+        val path = pathBeingScanned
+        val progressMsg = if (max > 0) "$progress / $max" else path.ifEmpty { context.getString(R.string.scan_starting) }
+        val showNow = {
+            try {
+                android.util.Log.i("SimpleMediaScanner", "ScanProgress event: progress=$progress max=$max msg='$progressMsg'")
+                EventBus.getDefault().post(Events.ScanProgress(progress, max, progressMsg))
+                val notification = notificationHelper!!.createMediaScannerNotification(path, progress, max)
                 notificationHelper!!.notify(SCANNER_NOTIFICATION_ID, notification)
-            }, SCANNER_NOTIFICATION_DELAY)
+                if (forceShowImmediately && max > 0) {
+                    android.util.Log.d("SimpleMediaScanner", "maybeShowScanProgress: notified progress $progress/$max")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SimpleMediaScanner", "maybeShowScanProgress: failed to show notification", e)
+            }
+        }
+
+        if (forceShowImmediately) {
+            lastProgressUpdateMs = System.currentTimeMillis()
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                showNow()
+            } else {
+                notificationHandler?.post { showNow() }
+            }
         } else {
-            if (System.currentTimeMillis() - lastProgressUpdateMs > 100L) {
-                lastProgressUpdateMs = System.currentTimeMillis()
-                val notification = notificationHelper!!.createMediaScannerNotification(pathBeingScanned, progress, max)
-                notificationHelper!!.notify(SCANNER_NOTIFICATION_ID, notification)
+            val delayNotification = pathBeingScanned.isEmpty()
+            if (delayNotification) {
+                notificationHandler?.postDelayed({ showNow() }, SCANNER_NOTIFICATION_DELAY)
+            } else {
+                if (System.currentTimeMillis() - lastProgressUpdateMs > 100L) {
+                    lastProgressUpdateMs = System.currentTimeMillis()
+                    showNow()
+                }
             }
         }
     }
@@ -927,6 +712,7 @@ class SimpleMediaScanner(private val context: Application) {
         private const val SCANNER_NOTIFICATION_ID = 43
         private const val SCANNER_NOTIFICATION_DELAY = 1500L
         private const val GENRE_CONTENT_URI = "content://media/external/audio/genres/all/members"
+        private const val DB_INSERT_BATCH_SIZE = 25
 
         private var instance: SimpleMediaScanner? = null
 
