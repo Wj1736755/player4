@@ -1,0 +1,78 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net48</TargetFramework>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <!-- Connection string for rollback generation (can be overridden via environment variable or MSBuild property) -->
+        <RollbackConnectionString Condition="'$(RollbackConnectionString)' == ''">$(ROLLBACK_CONNECTION_STRING)</RollbackConnectionString>
+        <!-- Directory containing SQL migration scripts -->
+        <ScriptsDirectory Condition="'$(ScriptsDirectory)' == ''">$(MSBuildProjectDirectory)\Scripts</ScriptsDirectory>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="dbup-sqlserver" Version="6.0.16" />
+      <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+      <PackageReference Include="Microsoft.SqlServer.DacFx" Version="162.0.52" />
+      <PackageReference Include="PolySharp" Version="1.13.1">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+      </PackageReference>
+    </ItemGroup>
+    
+    <ItemGroup>
+      <ProjectReference Include="..\Stln.DbUp.Extensions\Stln.DbUp.Extensions.csproj" />
+      <ProjectReference Include="..\RollbackGenerator\RollbackGenerator.csproj" />
+    </ItemGroup>
+
+    <!-- MSBuild Target: Automatically generate rollback scripts after build -->
+    <!-- 
+        Usage:
+        1. Set RollbackConnectionString property: dotnet build /p:RollbackConnectionString="Server=..."
+        2. Or set environment variable: set ROLLBACK_CONNECTION_STRING="Server=..."
+        3. Or set ScriptsDirectory property: dotnet build /p:ScriptsDirectory="path\to\scripts"
+        
+        The target will automatically generate .rollback.sql files for all .sql files in ScriptsDirectory
+        that don't already have a rollback file.
+        
+        Note: This uses the separate RollbackGenerator project.
+    -->
+    <Target Name="GenerateRollbacks" AfterTargets="Build" Condition="'$(Configuration)' != 'Debug' Or '$(GenerateRollbacksInDebug)' == 'true'">
+        <Message Text="Checking for missing rollback scripts..." Importance="normal" />
+        <Message Text="ScriptsDirectory: $(ScriptsDirectory)" Importance="low" />
+        <Message Text="ConnectionString: $(RollbackConnectionString)" Importance="low" Condition="'$(RollbackConnectionString)' != ''" />
+        
+        <!-- Check if ScriptsDirectory exists -->
+        <PropertyGroup Condition="Exists('$(ScriptsDirectory)')">
+            <ScriptsDirectoryExists>true</ScriptsDirectoryExists>
+        </PropertyGroup>
+        
+        <!-- Path to RollbackGenerator project -->
+        <PropertyGroup>
+            <RollbackGeneratorProject>$(MSBuildThisFileDirectory)..\RollbackGenerator\RollbackGenerator.csproj</RollbackGeneratorProject>
+        </PropertyGroup>
+        
+        <!-- Build RollbackGenerator project first -->
+        <MSBuild 
+            Projects="$(RollbackGeneratorProject)"
+            Targets="Build"
+            Condition="'$(RollbackConnectionString)' != '' And '$(ScriptsDirectoryExists)' == 'true'"
+            Properties="Configuration=$(Configuration)" />
+        
+        <!-- Generate rollbacks using RollbackGenerator project -->
+        <Exec 
+            Command="dotnet run --project &quot;$(RollbackGeneratorProject)&quot; --no-build -- &quot;$(RollbackConnectionString)&quot; &quot;$(ScriptsDirectory)&quot; &quot;$(MSBuildProjectDirectory)&quot;"
+            Condition="'$(RollbackConnectionString)' != '' And '$(ScriptsDirectoryExists)' == 'true'"
+            IgnoreExitCode="true"
+            ContinueOnError="true" />
+        
+        <Warning 
+            Text="Rollback generation skipped: ConnectionString not set. Set RollbackConnectionString property or ROLLBACK_CONNECTION_STRING environment variable."
+            Condition="'$(RollbackConnectionString)' == ''" />
+        
+        <Warning 
+            Text="Rollback generation skipped: ScriptsDirectory '$(ScriptsDirectory)' does not exist."
+            Condition="'$(ScriptsDirectoryExists)' != 'true'" />
+    </Target>
+
+</Project>

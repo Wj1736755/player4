@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="dbup-sqlserver" Version="6.0.16" />
+      <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+      <PackageReference Include="Microsoft.SqlServer.DacFx" Version="162.0.52" />
+      <PackageReference Include="PolySharp" Version="1.13.1">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+      </PackageReference>
+    </ItemGroup>
+    
+    <ItemGroup>
+      <ProjectReference Include="..\Stln.DbUp.Extensions\Stln.DbUp.Extensions.csproj" />
+    </ItemGroup>
+
+</Project>
